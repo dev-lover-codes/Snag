@@ -1,47 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-void main() {
-  runApp(const MyApp());
-}
+import 'app/app.dart';
+import 'app/providers.dart';
+import 'core/env.dart';
+import 'data/local/app_database.dart';
 
-class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-  @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  final TextEditingController todoEditor = TextEditingController();
-  List<String> todos = ["Bankai", "Yokoso", "Sakakamano Sekhai"];
-  void showAddTodoDialog() {
-    setState(() {
-      todos.add("Dialog Opened");
-    });
+  if (!Env.isConfigured) {
+    runApp(const NotConfiguredApp());
+    return;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
+  await Supabase.initialize(
+    url: Env.supabaseUrl,
+    publishableKey: Env.supabaseAnonKey,
+  );
 
-      home: Scaffold(
-        appBar: AppBar(title: const Text("Todo List")),
-
-        body: ListView.builder(
-          itemCount: todos.length,
-
-          itemBuilder: (context, index) {
-            return Card(child: ListTile(title: Text(todos[index])));
-          },
-        ),
-
-        floatingActionButton: FloatingActionButton(
-          onPressed: showAddTodoDialog,
-
-          child: const Icon(Icons.add),
-        ),
-      ),
-    );
-  }
+  final db = AppDatabase();
+  runApp(
+    ProviderScope(
+      overrides: [databaseProvider.overrideWithValue(db)],
+      child: const SnagApp(),
+    ),
+  );
 }

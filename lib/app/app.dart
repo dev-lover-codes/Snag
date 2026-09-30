@@ -1,0 +1,112 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../core/utils/share_parser.dart';
+import '../features/common/common_widgets.dart';
+import '../services/share_intent_service.dart';
+import 'providers.dart';
+import 'router.dart';
+import 'theme.dart';
+
+class SnagApp extends ConsumerStatefulWidget {
+  const SnagApp({super.key, this.shareService});
+
+  /// Injectable for tests.
+  final ShareIntentService? shareService;
+
+  @override
+  ConsumerState<SnagApp> createState() => _SnagAppState();
+}
+
+class _SnagAppState extends ConsumerState<SnagApp> {
+  late final ShareIntentService _share =
+      widget.shareService ?? ShareIntentService();
+  AppLifecycleListener? _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(onResume: _refresh);
+    Future.microtask(() async {
+      await ref.read(pendingShareProvider.notifier).restore();
+      await _share.start(_onShare);
+      _refresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    _lifecycle?.dispose();
+    _share.dispose();
+    super.dispose();
+  }
+
+  void _refresh() => ref.read(syncProvider.notifier).refresh();
+
+  Future<void> _onShare(String? text) async {
+    if (parseSharedText(text) is ShareEmpty) {
+      showSnack('Nothing to save from this share');
+      return;
+    }
+    // The router redirect sends the user to /share (via login if needed).
+    await ref.read(pendingShareProvider.notifier).set(text!);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen(authChangesProvider, (_, next) {
+      if (next.value?.event == AuthChangeEvent.signedIn) _refresh();
+    });
+    ref.listen(onlineProvider, (prev, next) {
+      if (prev?.value == false && next.value == true) _refresh();
+    });
+
+    return MaterialApp.router(
+      title: 'Snag',
+      debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: scaffoldMessengerKey,
+      theme: buildTheme(Brightness.light),
+      darkTheme: buildTheme(Brightness.dark),
+      themeMode: ThemeMode.system,
+      routerConfig: ref.watch(routerProvider),
+    );
+  }
+}
+
+/// Shown instead of crashing when env.json values are missing.
+class NotConfiguredApp extends StatelessWidget {
+  const NotConfiguredApp({super.key});
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: buildTheme(Brightness.light),
+    darkTheme: buildTheme(Brightness.dark),
+    home: const Scaffold(
+      body: Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.settings_suggest_outlined, size: 56),
+              SizedBox(height: 16),
+              Text(
+                'App not configured',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Run with --dart-define-from-file=env.json '
+                '(copy env.example.json and fill in your Supabase URL '
+                'and anon key).',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
