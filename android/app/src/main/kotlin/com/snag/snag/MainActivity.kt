@@ -1,4 +1,4 @@
-package com.example.myapp
+package com.snag.snag
 
 import io.flutter.embedding.android.FlutterActivity
 
