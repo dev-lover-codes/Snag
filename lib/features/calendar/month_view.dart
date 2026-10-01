@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/utils/date_utils.dart';
+import '../../data/remote/holidays_remote.dart';
 
 const _monthNames = [
   'January',
@@ -27,6 +28,7 @@ class MonthView extends StatelessWidget {
     required this.month,
     required this.selected,
     required this.eventCounts,
+    this.holidays = const {},
     required this.onSelect,
     required this.onMonthChanged,
   });
@@ -37,6 +39,9 @@ class MonthView extends StatelessWidget {
 
   /// Number of events per local day (keys from [startOfDay]).
   final Map<DateTime, int> eventCounts;
+
+  /// Holidays per local day (keys from [startOfDay]).
+  final Map<DateTime, List<Holiday>> holidays;
   final ValueChanged<DateTime> onSelect;
   final ValueChanged<DateTime> onMonthChanged;
 
@@ -116,6 +121,7 @@ class MonthView extends StatelessWidget {
                     today: today,
                     selected: selected,
                     count: eventCounts[day] ?? 0,
+                    holidays: holidays[day] ?? const [],
                     onTap: onSelect,
                   ),
                 );
@@ -134,6 +140,7 @@ class _DayCell extends StatelessWidget {
     required this.today,
     required this.selected,
     required this.count,
+    required this.holidays,
     required this.onTap,
   });
 
@@ -142,6 +149,7 @@ class _DayCell extends StatelessWidget {
   final DateTime today;
   final DateTime selected;
   final int count;
+  final List<Holiday> holidays;
   final ValueChanged<DateTime> onTap;
 
   @override
@@ -149,19 +157,26 @@ class _DayCell extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final isSelected = day == selected;
     final isToday = day == today;
+    final isPublicHoliday = holidays.any((h) => h.isPublic);
+    final hasObservance = holidays.any((h) => !h.isPublic);
     final fg = isSelected
         ? scheme.onPrimary
         : !inMonth
         ? scheme.onSurfaceVariant.withValues(alpha: 0.5)
+        : isPublicHoliday
+        ? scheme.error
         : isToday
         ? scheme.primary
         : scheme.onSurface;
+    final names = holidays.map((h) => h.name).join(', ');
 
     return Semantics(
       button: true,
       selected: isSelected,
       label:
-          '${formatShortDate(day)}${count > 0 ? ', $count event${count == 1 ? '' : 's'}' : ''}',
+          '${formatShortDate(day)}'
+          '${names.isEmpty ? '' : ', $names'}'
+          '${count > 0 ? ', $count event${count == 1 ? '' : 's'}' : ''}',
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: () => onTap(day),
@@ -185,7 +200,7 @@ class _DayCell extends StatelessWidget {
                   '${day.day}',
                   style: TextStyle(
                     color: fg,
-                    fontWeight: isToday || isSelected
+                    fontWeight: isToday || isSelected || isPublicHoliday
                         ? FontWeight.w700
                         : FontWeight.w400,
                   ),
@@ -197,6 +212,18 @@ class _DayCell extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    if (hasObservance)
+                      Container(
+                        width: 5,
+                        height: 5,
+                        margin: const EdgeInsets.symmetric(horizontal: 1),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: scheme.secondary.withValues(
+                            alpha: inMonth ? 1 : 0.4,
+                          ),
+                        ),
+                      ),
                     for (var i = 0; i < count.clamp(0, 3); i++)
                       Container(
                         width: 5,

@@ -10,6 +10,7 @@ import '../data/remote/storage_remote.dart';
 import '../data/remote/chats_remote.dart';
 import '../data/remote/drive_remote.dart';
 import '../data/remote/events_remote.dart';
+import '../data/remote/holidays_remote.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/repositories/chats_repository.dart';
 import '../data/repositories/drive_repository.dart';
@@ -294,4 +295,40 @@ final chatsProvider = StreamProvider<List<ChatSummary>>((ref) async* {
       // Keep showing the last list; pull to refresh retries.
     }
   }
+});
+
+// ---- Calendar holidays ---------------------------------------------------
+
+/// Holiday region and festivals toggle, saved on this device.
+class HolidayPrefsNotifier extends Notifier<HolidayPrefs> {
+  static const draftKey = 'holiday_prefs';
+
+  @override
+  HolidayPrefs build() {
+    Future.microtask(() async {
+      final raw = await ref.read(databaseProvider).getDraft(draftKey);
+      if (raw != null && ref.mounted) state = HolidayPrefs.fromJson(raw);
+    });
+    return const HolidayPrefs();
+  }
+
+  Future<void> update(HolidayPrefs prefs) async {
+    state = prefs;
+    await ref.read(databaseProvider).saveDraft(draftKey, prefs.toJson());
+  }
+}
+
+final holidayPrefsProvider =
+    NotifierProvider<HolidayPrefsNotifier, HolidayPrefs>(
+      HolidayPrefsNotifier.new,
+    );
+
+/// Holidays for the chosen region, filtered by the festivals toggle.
+final holidaysProvider = FutureProvider<List<Holiday>>((ref) async {
+  if (ref.watch(currentUserIdProvider) == null) return const [];
+  final prefs = ref.watch(holidayPrefsProvider);
+  final region = prefs.region;
+  if (region == null) return const [];
+  final all = await HolidaysRemote(ref.watch(supabaseProvider)).fetch(region);
+  return prefs.observances ? all : all.where((h) => h.isPublic).toList();
 });

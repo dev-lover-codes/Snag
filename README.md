@@ -23,7 +23,8 @@ Stage 3 + Mission C (the guaranteed scope), plus all four extras: P1 Drive "My F
 - **My Files:** a private drive. Upload images and PDFs (up to 10 MB), preview, rename, delete, and see "X MB used". Kept completely separate from chats.
 
 **Calendar**
-- Upcoming events grouped by Today, Tomorrow, then dates, with a "Show past events" toggle.
+- A month view with dots on days that have events. Tap a day to see its events and add one on that day. The Upcoming list groups events by Today, Tomorrow, then dates, with "Show past".
+- Public holidays and festivals for India (or 9 other countries; pick with 🌐), from Google's public holiday calendars, stored in the read-only `holidays` table. Refresh yearly with `node tool/refresh_holidays.mjs && supabase db push --linked`.
 - Events have a title, date, start time, optional end time, note and reminder (none, at start, 10 min, 1 hour or 1 day before).
 - Reminders are inexact local notifications that survive a reboot. They're rescheduled after login for the next 30 days and cancelled on logout. Tapping one opens the event.
 
@@ -84,7 +85,7 @@ Screens never touch drift or Supabase directly. Supabase is the source of truth,
 
 ## How authentication works
 
-- Supabase email + password. Sign-up also asks for a username (`^[a-z0-9_]{3,20}$`), checked live with the `is_username_available` RPC. A database trigger stores it in `profiles`.
+- Supabase email + password. You can sign in with your **email or your username**. Usernames go through the `login-with-username` Edge Function, which looks up the email on the server, so emails are never exposed. Sign-up also asks for a username (`^[a-z0-9_]{3,20}$`), checked live with the `is_username_available` RPC. A database trigger stores it in `profiles`.
 - The session is kept on the device by `supabase_flutter`, so you stay signed in after restarting the app.
 - Email confirmation is **off**, so reviewers can sign up and use the app right away. Trade-off: email addresses are not verified.
 

@@ -6,6 +6,7 @@ import '../../app/providers.dart';
 import '../../core/errors.dart';
 import '../../core/utils/date_utils.dart';
 import '../../data/remote/events_remote.dart';
+import '../../data/remote/holidays_remote.dart';
 import '../common/common_widgets.dart';
 import '../profile/profile_avatar.dart';
 import 'month_view.dart';
@@ -41,12 +42,18 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final events = ref.watch(eventsProvider);
+    final holidays = ref.watch(holidaysProvider).value ?? const <Holiday>[];
     return Scaffold(
       appBar: AppBar(
         title: const Text('Calendar'),
         actions: [
           if (_view == _View.month)
             TextButton(onPressed: _today, child: const Text('Today')),
+          IconButton(
+            tooltip: 'Holidays',
+            icon: const Icon(Icons.public_rounded),
+            onPressed: () => showHolidaySettings(context),
+          ),
           const ProfileAvatarButton(),
           const SizedBox(width: 8),
         ],
@@ -96,8 +103,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   ),
                 ),
                 data: (list) => _view == _View.month
-                    ? _monthLayout(list)
+                    ? _monthLayout(list, holidays)
                     : _EventList(
+                        nextHoliday: _nextHoliday(holidays),
                         events: _upcoming(list),
                         emptyMessage: _showPast
                             ? 'No events yet — tap + to add one.'
@@ -121,7 +129,19 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     );
   }
 
-  Widget _monthLayout(List<CalendarEvent> all) {
+  Holiday? _nextHoliday(List<Holiday> all) {
+    final today = startOfDay(DateTime.now());
+    for (final h in all) {
+      if (h.isPublic && !h.date.isBefore(today)) return h;
+    }
+    return null;
+  }
+
+  Widget _monthLayout(List<CalendarEvent> all, List<Holiday> holidays) {
+    final holidaysByDay = <DateTime, List<Holiday>>{};
+    for (final h in holidays) {
+      (holidaysByDay[h.date] ??= []).add(h);
+    }
     final perDay = <DateTime, int>{};
     for (final e in all) {
       final d = startOfDay(e.startsAt);
@@ -135,10 +155,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       month: _month,
       selected: _selected,
       eventCounts: perDay,
+      holidays: holidaysByDay,
       onSelect: _select,
       onMonthChanged: (m) => setState(() => _month = m),
     );
-    final agenda = _DayAgenda(day: _selected, events: dayEvents);
+    final agenda = _DayAgenda(
+      day: _selected,
+      events: dayEvents,
+      holidays: holidaysByDay[_selected] ?? const [],
+    );
 
     return LayoutBuilder(
       builder: (context, c) {
@@ -192,9 +217,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
 /// The selected day's events, under (or beside) the month grid.
 class _DayAgenda extends StatelessWidget {
-  const _DayAgenda({required this.day, required this.events});
+  const _DayAgenda({
+    required this.day,
+    required this.events,
+    required this.holidays,
+  });
   final DateTime day;
   final List<CalendarEvent> events;
+  final List<Holiday> holidays;
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +238,7 @@ class _DayAgenda extends StatelessWidget {
         style: theme.textTheme.titleMedium,
       ),
     );
-    final body = events.isEmpty
+    final body = events.isEmpty && holidays.isEmpty
         ? Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             child: Text(
@@ -216,7 +246,12 @@ class _DayAgenda extends StatelessWidget {
               style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
             ),
           )
-        : Column(children: [for (final e in events) EventTile(event: e)]);
+        : Column(
+            children: [
+              for (final h in holidays) HolidayTile(holiday: h),
+              for (final e in events) EventTile(event: e),
+            ],
+          );
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -233,18 +268,43 @@ Widget _scrollable(Widget child) => LayoutBuilder(
 );
 
 class _EventList extends StatelessWidget {
-  const _EventList({required this.events, required this.emptyMessage});
+  const _EventList({
+    required this.events,
+    required this.emptyMessage,
+    this.nextHoliday,
+  });
   final List<CalendarEvent> events;
   final String emptyMessage;
+  final Holiday? nextHoliday;
 
   @override
   Widget build(BuildContext context) {
+    final holiday = nextHoliday;
+    final card = holiday == null
+        ? null
+        : Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+            child: Card(
+              margin: EdgeInsets.zero,
+              child: HolidayTile(holiday: holiday, showDate: true),
+            ),
+          );
     if (events.isEmpty) {
-      return _scrollable(
-        EmptyState(icon: Icons.event_available_outlined, message: emptyMessage),
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          ?card,
+          Padding(
+            padding: const EdgeInsets.only(top: 48),
+            child: EmptyState(
+              icon: Icons.event_available_outlined,
+              message: emptyMessage,
+            ),
+          ),
+        ],
       );
     }
-    final rows = <Widget>[];
+    final rows = <Widget>[?card];
     DateTime? day;
     for (final e in events) {
       final d = startOfDay(e.startsAt);
@@ -323,6 +383,118 @@ class EventTile extends StatelessWidget {
               color: scheme.onSurfaceVariant,
             ),
       onTap: () => context.push('/calendar/event/${event.id}'),
+    );
+  }
+}
+
+/// A holiday row: public holidays in the error colour, festivals and
+/// observances in the secondary colour. Read-only.
+class HolidayTile extends StatelessWidget {
+  const HolidayTile({super.key, required this.holiday, this.showDate = false});
+  final Holiday holiday;
+  final bool showDate;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = holiday.isPublic ? scheme.error : scheme.secondary;
+    var subtitle = holiday.isPublic
+        ? 'Public holiday'
+        : 'Festival / observance';
+    if (showDate) {
+      final days = holiday.date.difference(startOfDay(DateTime.now())).inDays;
+      final when = days == 0
+          ? 'today'
+          : days == 1
+          ? 'tomorrow'
+          : 'in $days days';
+      subtitle = 'Next holiday · ${eventDayLabel(holiday.date)} · $when';
+    }
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: color.withValues(alpha: 0.15),
+        child: Icon(
+          holiday.isPublic
+              ? Icons.celebration_rounded
+              : Icons.auto_awesome_rounded,
+          color: color,
+          size: 20,
+        ),
+      ),
+      title: Text(holiday.name),
+      subtitle: Text(subtitle),
+    );
+  }
+}
+
+/// Bottom sheet: which country's holidays to show, and festivals on/off.
+Future<void> showHolidaySettings(BuildContext context) =>
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => const _HolidaySettings(),
+    );
+
+class _HolidaySettings extends ConsumerWidget {
+  const _HolidaySettings();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final prefs = ref.watch(holidayPrefsProvider);
+    final notifier = ref.read(holidayPrefsProvider.notifier);
+    final scheme = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.8,
+        ),
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Text(
+                'Holidays',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            SwitchListTile(
+              title: const Text('Show holidays'),
+              value: prefs.region != null,
+              onChanged: (on) => notifier.update(
+                prefs.copyWith(region: () => on ? 'in' : null),
+              ),
+            ),
+            SwitchListTile(
+              title: const Text('Include festivals & observances'),
+              value: prefs.observances,
+              onChanged: prefs.region == null
+                  ? null
+                  : (on) => notifier.update(prefs.copyWith(observances: on)),
+            ),
+            const Divider(),
+            for (final MapEntry(key: code, value: name)
+                in holidayRegions.entries)
+              ListTile(
+                enabled: prefs.region != null,
+                title: Text(name),
+                trailing: prefs.region == code
+                    ? Icon(Icons.check_rounded, color: scheme.primary)
+                    : null,
+                onTap: () =>
+                    notifier.update(prefs.copyWith(region: () => code)),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+              child: Text(
+                "From Google's public holiday calendars. Saved on this device.",
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
