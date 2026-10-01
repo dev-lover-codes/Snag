@@ -11,6 +11,7 @@ import '../common/common_widgets.dart';
 import '../messenger/attachment_views.dart';
 import '../messenger/item_actions.dart';
 import '../profile/profile_avatar.dart';
+import 'my_files_tab.dart';
 
 class DriveScreen extends ConsumerWidget {
   const DriveScreen({super.key});
@@ -39,44 +40,56 @@ class DriveScreen extends ConsumerWidget {
             Expanded(
               child: TabBarView(
                 children: [
-                  RefreshIndicator(
-                    onRefresh: () => ref.read(syncProvider.notifier).refresh(),
-                    child: files.when(
-                      loading: () => const LoadingView(),
-                      error: (e, _) => ErrorView(message: userMessageFor(e)),
-                      data: (list) => list.isEmpty
-                          ? LayoutBuilder(
-                              builder: (context, c) => ListView(
-                                children: [
-                                  SizedBox(
-                                    height: c.maxHeight,
-                                    child: const EmptyState(
-                                      icon: Icons.folder_open_outlined,
-                                      message:
-                                          'Images and PDFs you save in Saved '
-                                          'Messages show up here.',
+                  Column(
+                    children: [
+                      Expanded(
+                        child: RefreshIndicator(
+                          onRefresh: () =>
+                              ref.read(syncProvider.notifier).refresh(),
+                          child: files.when(
+                            loading: () => const LoadingView(),
+                            error: (e, _) =>
+                                ErrorView(message: userMessageFor(e)),
+                            data: (list) => list.isEmpty
+                                ? LayoutBuilder(
+                                    builder: (context, c) => ListView(
+                                      children: [
+                                        SizedBox(
+                                          height: c.maxHeight,
+                                          child: const EmptyState(
+                                            icon: Icons.folder_open_outlined,
+                                            message:
+                                                'Images and PDFs you save in Saved '
+                                                'Messages show up here.',
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : _Grid(files: list),
-                    ),
+                                  )
+                                : _Grid(files: list),
+                          ),
+                        ),
+                      ),
+                      Container(
+                        width: double.infinity,
+                        color: scheme.surfaceContainerLow,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          'From Chats is read-only. Manage files from their '
+                          'message.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const ComingSoon(
-                    icon: Icons.cloud_upload_outlined,
-                    message: 'Upload and organise your own files here.',
-                  ),
+                  const MyFilesTab(),
                 ],
-              ),
-            ),
-            Container(
-              width: double.infinity,
-              color: scheme.surfaceContainerLow,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text(
-                'From Chats is read-only. Manage files from their message.',
-                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
               ),
             ),
           ],
