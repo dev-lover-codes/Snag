@@ -39,6 +39,20 @@ class DriveRepository {
 
   Future<String> signedUrl(DriveFile f) => _storage.signedUrl(f.storagePath);
 
+  /// A My Files item as an attachment for a chat or Saved Messages. The
+  /// bytes are copied, so the message keeps working if the Drive file is
+  /// later renamed or deleted.
+  Future<PickedAttachment> asAttachment(DriveFile f) async {
+    _requireOnline();
+    final bytes = await _storage.download(f.storagePath);
+    return PickedAttachment(
+      path: 'drive:${f.name}',
+      mime: f.mimeType,
+      name: f.name,
+      bytes: bytes,
+    );
+  }
+
   /// Uploads the file first, then inserts the row; removes the upload again
   /// if the insert fails so nothing is orphaned.
   Future<DriveFile> upload(PickedAttachment file) async {

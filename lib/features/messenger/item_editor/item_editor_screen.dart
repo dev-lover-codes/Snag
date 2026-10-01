@@ -231,12 +231,20 @@ class _ItemEditorScreenState extends ConsumerState<ItemEditorScreen> {
       _original?.remotePath != null && !_removeAttachment;
 
   Future<void> _pick({required bool image}) async {
-    AttachKind? kind = AttachKind.pdf;
-    if (image) {
-      kind = await chooseAttachKind(context, allowPdf: false);
-    }
-    if (kind == null) return;
-    final picked = await pickAttachment(ref, kind);
+    final kind = await chooseAttachKind(
+      context,
+      allowImages: image,
+      allowPdf: !image,
+      allowDrive: true,
+    );
+    if (kind == null || !mounted) return;
+    final picked = await pickAttachment(
+      ref,
+      kind,
+      context: context,
+      allowImages: image,
+      allowPdf: !image,
+    );
     if (picked == null || !mounted) return;
     _setState(() => _newAttachment = picked);
   }

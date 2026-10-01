@@ -14,6 +14,9 @@ abstract class StorageRemote {
   Future<void> uploadBytes(String path, Uint8List bytes, String mime);
   Future<void> remove(String path);
 
+  /// The file's bytes (the caller must be allowed to read it).
+  Future<Uint8List> download(String path);
+
   /// Signed URL valid for 1 hour, cached in memory for the session.
   Future<String> signedUrl(String path);
   void clearCache();
@@ -52,6 +55,10 @@ class SupabaseStorageRemote implements StorageRemote {
         )
         .timeout(_timeout);
   }
+
+  @override
+  Future<Uint8List> download(String path) =>
+      _bucket.download(path).timeout(_timeout);
 
   @override
   Future<void> remove(String path) async {

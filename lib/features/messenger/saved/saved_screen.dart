@@ -363,9 +363,9 @@ class _ComposerState extends ConsumerState<_Composer> {
   }
 
   Future<void> _attach() async {
-    final kind = await chooseAttachKind(context);
+    final kind = await chooseAttachKind(context, allowDrive: true);
     if (kind == null || !mounted) return;
-    final picked = await pickAttachment(ref, kind);
+    final picked = await pickAttachment(ref, kind, context: context);
     if (picked == null || !mounted) return;
     context.push(
       '/item/new?type=${picked.isPdf ? 'note' : 'image'}',

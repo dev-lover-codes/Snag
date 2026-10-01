@@ -98,6 +98,8 @@ class FakeRemote implements ItemsRemote {
 }
 
 class FakeStorage implements StorageRemote {
+  @override
+  Future<Uint8List> download(String path) async => Uint8List.fromList([1, 2]);
   final files = <String>{};
   @override
   Future<void> uploadBytes(String path, Uint8List bytes, String mime) async =>

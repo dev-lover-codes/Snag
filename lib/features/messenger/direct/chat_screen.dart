@@ -96,9 +96,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// 📎: pick an image or PDF and send it, using the typed text as caption.
   Future<void> _attach() async {
     if (_sending) return;
-    final kind = await chooseAttachKind(context);
+    final kind = await chooseAttachKind(context, allowDrive: true);
     if (kind == null || !mounted) return;
-    final picked = await pickAttachment(ref, kind);
+    final picked = await pickAttachment(ref, kind, context: context);
     if (picked == null || !mounted) return;
     setState(() => _sending = true);
     try {

@@ -82,6 +82,30 @@ void main() {
     });
   });
 
+  test('a Drive file becomes an in-memory attachment copy', () async {
+    final repo = DriveRepository(
+      remote: _FailingDriveRemote(),
+      storage: _FakeStorage(),
+      currentUserId: () => 'user-a',
+      isOnline: () => true,
+    );
+    final file = DriveFile(
+      id: 'f1',
+      name: 'Notes.pdf',
+      storagePath: 'user-a/f1/Notes.pdf',
+      mimeType: pdfMime,
+      sizeBytes: 2,
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+    );
+    final a = await repo.asAttachment(file);
+    expect(a.name, 'Notes.pdf');
+    expect(a.mime, pdfMime);
+    expect(a.bytes, [1, 2]);
+    expect(a.size, 2);
+    expect(a.exists, isTrue);
+  });
+
   group('Events', () {
     final start = DateTime(2026, 10, 3, 14);
 
@@ -244,6 +268,8 @@ void main() {
 }
 
 class _FakeStorage implements StorageRemote {
+  @override
+  Future<Uint8List> download(String path) async => Uint8List.fromList([1, 2]);
   final uploaded = <String>[];
   final removed = <String>[];
   @override
