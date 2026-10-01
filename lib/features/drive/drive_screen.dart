@@ -211,17 +211,30 @@ class FilePreviewScreen extends ConsumerWidget {
   }
 }
 
-/// From Chats: Saved Messages attachments, then files from 1:1 chats.
-/// Read-only: files stay in their chat; Drive only shows them.
+/// One From Chats folder: Saved Messages, or a person you chat with.
+class _Folder {
+  const _Folder({
+    required this.title,
+    required this.count,
+    required this.latest,
+    this.conversationId,
+    this.username,
+  });
+  final String title;
+  final int count;
+  final DateTime latest;
+
+  /// Null for the Saved Messages folder.
+  final String? conversationId;
+  final String? username;
+
+  bool get isSaved => conversationId == null;
+}
+
+/// From Chats: a folder for Saved Messages and one per person you chat
+/// with. Read-only: files stay in their chat; Drive only shows them.
 class _FromChats extends ConsumerWidget {
   const _FromChats();
-
-  static const _grid = SliverGridDelegateWithMaxCrossAxisExtent(
-    maxCrossAxisExtent: 180,
-    mainAxisSpacing: 10,
-    crossAxisSpacing: 10,
-    childAspectRatio: 0.82,
-  );
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -236,14 +249,41 @@ class _FromChats extends ConsumerWidget {
         c.conversationId: c.otherUsername,
     };
 
-    if (savedList.isEmpty && chatList.isEmpty && !chats.isLoading) {
+    final byChat = <String, List<ChatMessage>>{};
+    for (final m in chatList) {
+      (byChat[m.conversationId] ??= []).add(m);
+    }
+    final folders = <_Folder>[
+      if (savedList.isNotEmpty)
+        _Folder(
+          title: 'Saved Messages',
+          count: savedList.length,
+          latest: savedList.first.createdAt,
+        ),
+      ...(byChat.entries
+          .map(
+            (e) => _Folder(
+              title: names[e.key] == null ? 'Chat' : '@${names[e.key]}',
+              count: e.value.length,
+              latest: e.value.first.createdAt,
+              conversationId: e.key,
+              username: names[e.key],
+            ),
+          )
+          .toList()
+        ..sort((x, y) => y.latest.compareTo(x.latest))),
+    ];
+
+    if (folders.isEmpty) {
       return LayoutBuilder(
         builder: (context, c) => ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
             SizedBox(
               height: c.maxHeight,
-              child: chats.hasError
+              child: chats.isLoading
+                  ? const LoadingView()
+                  : chats.hasError
                   ? ErrorView(
                       message: userMessageFor(chats.error!),
                       onRetry: () => ref.invalidate(chatFilesProvider),
@@ -252,7 +292,7 @@ class _FromChats extends ConsumerWidget {
                       icon: Icons.folder_open_outlined,
                       message:
                           'Images and PDFs from Saved Messages and your chats '
-                          'show up here.',
+                          'show up here, in a folder for each chat.',
                     ),
             ),
           ],
@@ -260,63 +300,194 @@ class _FromChats extends ConsumerWidget {
       );
     }
 
-    return CustomScrollView(
+    return GridView.builder(
+      padding: const EdgeInsets.all(12),
       physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        if (savedList.isNotEmpty) ...[
-          _header(context, 'Saved Messages', savedList.length),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            sliver: SliverGrid.builder(
-              gridDelegate: _grid,
-              itemCount: savedList.length,
-              itemBuilder: (context, i) => _Tile(item: savedList[i]),
-            ),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 220,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 1.25,
+      ),
+      itemCount: folders.length + (chats.isLoading ? 1 : 0),
+      itemBuilder: (context, i) => i < folders.length
+          ? _FolderCard(folder: folders[i])
+          : const Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+class _FolderCard extends StatelessWidget {
+  const _FolderCard({required this.folder});
+  final _Folder folder;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final bg = folder.isSaved
+        ? scheme.primaryContainer
+        : scheme.secondaryContainer;
+    final fg = folder.isSaved
+        ? scheme.onPrimaryContainer
+        : scheme.onSecondaryContainer;
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context, rootNavigator: true).push(
+          MaterialPageRoute(builder: (_) => _FolderScreen(folder: folder)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: folder.isSaved
+                    ? Icon(Icons.bookmark_rounded, color: fg)
+                    : Center(
+                        child: Text(
+                          (folder.username ?? '?').characters.first
+                              .toUpperCase(),
+                          style: TextStyle(
+                            color: fg,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  Icon(
+                    Icons.folder_rounded,
+                    size: 16,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      folder.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${folder.count} file${folder.count == 1 ? '' : 's'} · '
+                '${formatShortDate(folder.latest)}',
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
+            ],
           ),
-        ],
-        if (chatList.isNotEmpty) ...[
-          _header(context, 'Conversations', chatList.length),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-            sliver: SliverGrid.builder(
+        ),
+      ),
+    );
+  }
+}
+
+/// The files inside one From Chats folder (read-only).
+class _FolderScreen extends ConsumerWidget {
+  const _FolderScreen({required this.folder});
+  final _Folder folder;
+
+  static const _grid = SliverGridDelegateWithMaxCrossAxisExtent(
+    maxCrossAxisExtent: 180,
+    mainAxisSpacing: 10,
+    crossAxisSpacing: 10,
+    childAspectRatio: 0.82,
+  );
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final Widget body;
+    if (folder.isSaved) {
+      final files = ref.watch(fromChatsProvider).value ?? const <SavedItem>[];
+      body = files.isEmpty
+          ? const EmptyState(
+              icon: Icons.folder_open_outlined,
+              message: 'No files here any more.',
+            )
+          : GridView.builder(
+              padding: const EdgeInsets.all(12),
               gridDelegate: _grid,
-              itemCount: chatList.length,
-              itemBuilder: (context, i) => _ChatFileTile(
-                message: chatList[i],
-                from: names[chatList[i].conversationId],
+              itemCount: files.length,
+              itemBuilder: (context, i) => _Tile(item: files[i]),
+            );
+    } else {
+      final files =
+          (ref.watch(chatFilesProvider).value ?? const <ChatMessage>[])
+              .where((m) => m.conversationId == folder.conversationId)
+              .toList();
+      body = files.isEmpty
+          ? const EmptyState(
+              icon: Icons.folder_open_outlined,
+              message: 'No files here any more.',
+            )
+          : GridView.builder(
+              padding: const EdgeInsets.all(12),
+              gridDelegate: _grid,
+              itemCount: files.length,
+              itemBuilder: (context, i) =>
+                  _ChatFileTile(message: files[i], from: folder.username),
+            );
+    }
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(folder.title),
+        actions: [
+          if (!folder.isSaved)
+            IconButton(
+              tooltip: 'Open chat',
+              icon: const Icon(Icons.forum_outlined),
+              onPressed: () {
+                final router = GoRouter.of(context);
+                Navigator.of(context).pop();
+                router.push('/chat/${folder.conversationId}');
+              },
+            )
+          else
+            IconButton(
+              tooltip: 'Open Saved Messages',
+              icon: const Icon(Icons.bookmark_outline_rounded),
+              onPressed: () {
+                final router = GoRouter.of(context);
+                Navigator.of(context).pop();
+                router.go('/messenger/saved');
+              },
+            ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(child: body),
+          Container(
+            width: double.infinity,
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              'Read-only. Manage files from their message.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ),
-        ] else if (chats.isLoading)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          )
-        else if (chats.hasError)
-          SliverToBoxAdapter(
-            child: ErrorView(
-              message: userMessageFor(chats.error!),
-              onRetry: () => ref.invalidate(chatFilesProvider),
-            ),
-          ),
-      ],
+        ],
+      ),
     );
   }
-
-  Widget _header(BuildContext context, String title, int count) =>
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            '$title · $count',
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-        ),
-      );
 }
 
 class _ChatFileTile extends ConsumerWidget {
