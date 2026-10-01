@@ -7,10 +7,18 @@ import '../data/local/app_database.dart';
 import '../data/remote/auth_remote.dart';
 import '../data/remote/items_remote.dart';
 import '../data/remote/storage_remote.dart';
+import '../data/remote/chats_remote.dart';
+import '../data/remote/drive_remote.dart';
+import '../data/remote/events_remote.dart';
 import '../data/repositories/auth_repository.dart';
+import '../data/repositories/chats_repository.dart';
+import '../data/repositories/drive_repository.dart';
+import '../data/repositories/events_repository.dart';
 import '../data/repositories/items_repository.dart';
+import '../data/repositories/reminders_repository.dart';
 import '../features/messenger/saved/saved_filter.dart';
 import '../services/connectivity_service.dart';
+import '../services/notification_service.dart';
 
 /// Overridden in `main.dart` with the real database.
 final databaseProvider = Provider<AppDatabase>(
@@ -178,3 +186,100 @@ class PendingShareNotifier extends Notifier<String?> {
 final pendingShareProvider = NotifierProvider<PendingShareNotifier, String?>(
   PendingShareNotifier.new,
 );
+
+// ---- Notifications (Calendar + item reminders) ---------------------------
+
+/// Overridden in `main.dart` with the initialised service.
+final notificationServiceProvider = Provider<NotificationService>(
+  (ref) => NotificationService(),
+);
+
+/// Route of the notification that cold-started the app, if any.
+final launchRouteProvider = Provider<String?>((ref) => null);
+
+final remindersRepositoryProvider = Provider<RemindersRepository>(
+  (ref) => RemindersRepository(
+    db: ref.watch(databaseProvider),
+    notifications: ref.watch(notificationServiceProvider),
+  ),
+);
+
+final itemReminderProvider = FutureProvider.family<DateTime?, String>((
+  ref,
+  itemId,
+) {
+  ref.watch(currentUserIdProvider);
+  return ref.watch(remindersRepositoryProvider).activeFor(itemId);
+});
+
+// ---- Drive "My Files" ----------------------------------------------------
+
+final driveRepositoryProvider = Provider<DriveRepository>((ref) {
+  final client = ref.watch(supabaseProvider);
+  final connectivity = ref.watch(connectivityServiceProvider);
+  return DriveRepository(
+    remote: SupabaseDriveRemote(client),
+    storage: SupabaseStorageRemote(client, bucket: 'drive'),
+    currentUserId: () => client.auth.currentUser?.id,
+    isOnline: () => connectivity.isOnline,
+  );
+});
+
+final driveFilesProvider = FutureProvider<List<DriveFile>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.watch(driveRepositoryProvider).list();
+});
+
+final driveSignedUrlProvider = FutureProvider.family<String, DriveFile>(
+  (ref, f) => ref.watch(driveRepositoryProvider).signedUrl(f),
+);
+
+// ---- Calendar ------------------------------------------------------------
+
+final eventsRepositoryProvider = Provider<EventsRepository>((ref) {
+  final connectivity = ref.watch(connectivityServiceProvider);
+  return EventsRepository(
+    remote: SupabaseEventsRemote(ref.watch(supabaseProvider)),
+    notifications: ref.watch(notificationServiceProvider),
+    isOnline: () => connectivity.isOnline,
+  );
+});
+
+final eventsProvider = FutureProvider<List<CalendarEvent>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.watch(eventsRepositoryProvider).list();
+});
+
+final eventProvider = FutureProvider.family<CalendarEvent, String>((ref, id) {
+  ref.watch(currentUserIdProvider);
+  return ref.watch(eventsRepositoryProvider).load(id);
+});
+
+// ---- 1:1 chats -----------------------------------------------------------
+
+final chatsRepositoryProvider = Provider<ChatsRepository>((ref) {
+  final client = ref.watch(supabaseProvider);
+  final connectivity = ref.watch(connectivityServiceProvider);
+  return ChatsRepository(
+    remote: SupabaseChatsRemote(client),
+    currentUserId: () => client.auth.currentUser?.id,
+    isOnline: () => connectivity.isOnline,
+  );
+});
+
+/// My conversations, refreshed whenever a new message arrives in any of them.
+final chatsProvider = StreamProvider<List<ChatSummary>>((ref) async* {
+  if (ref.watch(currentUserIdProvider) == null) {
+    yield const [];
+    return;
+  }
+  final repo = ref.watch(chatsRepositoryProvider);
+  yield await repo.chats();
+  await for (final _ in repo.newMessages()) {
+    try {
+      yield await repo.chats();
+    } catch (_) {
+      // Keep showing the last list; pull to refresh retries.
+    }
+  }
+});

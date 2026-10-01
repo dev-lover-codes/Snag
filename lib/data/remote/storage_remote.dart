@@ -2,7 +2,8 @@ import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Access to the private `chat-files` bucket.
+/// Access to a private bucket (`chat-files` for Saved Messages, `drive` for
+/// Drive "My Files").
 /// Paths are always `<user_id>/<item_id>/<file_name>`; storage policies
 /// reject anything outside the caller's own folder.
 abstract class StorageRemote {
@@ -15,10 +16,10 @@ abstract class StorageRemote {
 }
 
 class SupabaseStorageRemote implements StorageRemote {
-  SupabaseStorageRemote(this._client);
+  SupabaseStorageRemote(this._client, {this.bucket = 'chat-files'});
   final SupabaseClient _client;
 
-  static const bucket = 'chat-files';
+  final String bucket;
   static const _validity = Duration(hours: 1);
   static const _timeout = Duration(seconds: 60);
 

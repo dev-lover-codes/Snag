@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -23,6 +25,7 @@ class _SnagAppState extends ConsumerState<SnagApp> {
   late final ShareIntentService _share =
       widget.shareService ?? ShareIntentService();
   AppLifecycleListener? _lifecycle;
+  StreamSubscription<String>? _notificationTaps;
 
   @override
   void initState() {
@@ -32,14 +35,38 @@ class _SnagAppState extends ConsumerState<SnagApp> {
       await ref.read(pendingShareProvider.notifier).restore();
       await _share.start(_onShare);
       _refresh();
+      // Notification taps open their route (signed-out users go via login).
+      final launch = ref.read(launchRouteProvider);
+      if (launch != null) ref.read(routerProvider).push(launch);
+      _notificationTaps = ref
+          .read(notificationServiceProvider)
+          .taps
+          .listen((route) => ref.read(routerProvider).push(route));
     });
   }
 
   @override
   void dispose() {
     _lifecycle?.dispose();
+    _notificationTaps?.cancel();
     _share.dispose();
     super.dispose();
+  }
+
+  /// Calendar + reminders follow the session without touching auth code:
+  /// reschedule after login, cancel everything after sign-out.
+  Future<void> _onAuthChange(AuthState state) async {
+    try {
+      if (state.event == AuthChangeEvent.signedOut) {
+        await ref.read(notificationServiceProvider).cancelAll();
+      } else if (state.session != null &&
+          (state.event == AuthChangeEvent.signedIn ||
+              state.event == AuthChangeEvent.initialSession)) {
+        await ref.read(eventsRepositoryProvider).rescheduleUpcoming();
+      }
+    } catch (_) {
+      // Offline at login: reminders already scheduled on this device remain.
+    }
   }
 
   void _refresh() => ref.read(syncProvider.notifier).refresh();
@@ -57,6 +84,8 @@ class _SnagAppState extends ConsumerState<SnagApp> {
   Widget build(BuildContext context) {
     ref.listen(authChangesProvider, (_, next) {
       if (next.value?.event == AuthChangeEvent.signedIn) _refresh();
+      final state = next.value;
+      if (state != null) _onAuthChange(state);
     });
     ref.listen(onlineProvider, (prev, next) {
       if (prev?.value == false && next.value == true) _refresh();
