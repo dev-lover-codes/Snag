@@ -300,6 +300,8 @@ class _FakeChats implements ChatsRemote {
   @override
   Future<List<ChatMessage>> messages(String conversationId) async => const [];
   @override
+  Future<List<ChatMessage>> attachments() async => const [];
+  @override
   Future<ChatMessage> send(
     String conversationId,
     String body, {

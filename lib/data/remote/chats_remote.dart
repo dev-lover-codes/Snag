@@ -99,6 +99,9 @@ abstract class ChatsRemote {
   /// RPC's message for unknown users and self-chats.
   Future<String> startDirectChat(String username);
   Future<List<ChatMessage>> messages(String conversationId);
+
+  /// Every image/PDF sent in my conversations, newest first (Drive).
+  Future<List<ChatMessage>> attachments();
   Future<ChatMessage> send(
     String conversationId,
     String body, {
@@ -166,6 +169,18 @@ class SupabaseChatsRemote implements ChatsRemote {
         .single()
         .timeout(_timeout);
     return ChatMessage.fromRow(row);
+  }
+
+  @override
+  Future<List<ChatMessage>> attachments() async {
+    final rows = await _client
+        .from('messages')
+        .select()
+        .not('attachment_path', 'is', null)
+        .order('created_at', ascending: false)
+        .limit(300)
+        .timeout(_timeout);
+    return rows.map(ChatMessage.fromRow).toList();
   }
 
   @override

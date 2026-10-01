@@ -61,6 +61,9 @@ class ChatsRepository {
   Future<List<ChatMessage>> messages(String conversationId) =>
       _remote.messages(conversationId);
 
+  /// Files from my 1:1 chats, newest first. Drive shows them read-only.
+  Future<List<ChatMessage>> attachments() => _remote.attachments();
+
   /// Sends text, an attachment ([file], with [raw] as its caption), or both.
   /// The file is uploaded first; if the message insert then fails, the
   /// upload is removed again.

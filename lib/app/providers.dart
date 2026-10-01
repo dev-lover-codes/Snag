@@ -273,6 +273,12 @@ final directFileUrlProvider = FutureProvider.family<String, String>(
   (ref, path) => ref.watch(chatsRepositoryProvider).signedUrl(path),
 );
 
+/// Images and PDFs from my 1:1 chats, newest first (Drive → From Chats).
+final chatFilesProvider = FutureProvider<List<ChatMessage>>((ref) {
+  if (ref.watch(currentUserIdProvider) == null) return const [];
+  return ref.watch(chatsRepositoryProvider).attachments();
+});
+
 /// My conversations, refreshed whenever a new message arrives in any of them.
 final chatsProvider = StreamProvider<List<ChatSummary>>((ref) async* {
   if (ref.watch(currentUserIdProvider) == null) {
