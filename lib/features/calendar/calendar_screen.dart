@@ -8,9 +8,12 @@ import '../../core/utils/date_utils.dart';
 import '../../data/remote/events_remote.dart';
 import '../common/common_widgets.dart';
 import '../profile/profile_avatar.dart';
+import 'month_view.dart';
 
-/// Calendar: upcoming events grouped by day. Never shows Messenger or
-/// Drive data.
+enum _View { month, upcoming }
+
+/// Calendar: a month view with the selected day's events, plus the
+/// Upcoming list. Never shows Messenger or Drive data.
 class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key});
 
@@ -19,7 +22,21 @@ class CalendarScreen extends ConsumerStatefulWidget {
 }
 
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
+  _View _view = _View.month;
   bool _showPast = false;
+  DateTime _selected = startOfDay(DateTime.now());
+  late DateTime _month = DateTime(_selected.year, _selected.month);
+
+  void _select(DateTime day) => setState(() {
+    _selected = startOfDay(day);
+    _month = DateTime(day.year, day.month);
+  });
+
+  void _today() => _select(DateTime.now());
+
+  String _dateParam(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -27,24 +44,43 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Calendar'),
-        actions: const [ProfileAvatarButton(), SizedBox(width: 8)],
+        actions: [
+          if (_view == _View.month)
+            TextButton(onPressed: _today, child: const Text('Today')),
+          const ProfileAvatarButton(),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             child: Row(
               children: [
-                Text(
-                  'Upcoming',
-                  style: Theme.of(context).textTheme.titleMedium,
+                SegmentedButton<_View>(
+                  segments: const [
+                    ButtonSegment(
+                      value: _View.month,
+                      icon: Icon(Icons.calendar_view_month_rounded),
+                      label: Text('Month'),
+                    ),
+                    ButtonSegment(
+                      value: _View.upcoming,
+                      icon: Icon(Icons.view_agenda_outlined),
+                      label: Text('Upcoming'),
+                    ),
+                  ],
+                  selected: {_view},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (v) => setState(() => _view = v.first),
                 ),
                 const Spacer(),
-                FilterChip(
-                  label: const Text('Show past events'),
-                  selected: _showPast,
-                  onSelected: (v) => setState(() => _showPast = v),
-                ),
+                if (_view == _View.upcoming)
+                  FilterChip(
+                    label: const Text('Show past'),
+                    selected: _showPast,
+                    onSelected: (v) => setState(() => _showPast = v),
+                  ),
               ],
             ),
           ),
@@ -59,32 +95,133 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     onRetry: () => ref.invalidate(eventsProvider),
                   ),
                 ),
-                data: (list) => _EventList(
-                  events: _visible(list),
-                  emptyMessage: _showPast
-                      ? 'No events yet — tap + to add one.'
-                      : 'Nothing coming up — tap + to add an event.',
-                ),
+                data: (list) => _view == _View.month
+                    ? _monthLayout(list)
+                    : _EventList(
+                        events: _upcoming(list),
+                        emptyMessage: _showPast
+                            ? 'No events yet — tap + to add one.'
+                            : 'Nothing coming up — tap + to add an event.',
+                      ),
               ),
             ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         heroTag: 'calendar-new',
         tooltip: 'New event',
-        onPressed: () => context.push('/calendar/event/new'),
-        child: const Icon(Icons.add_rounded),
+        onPressed: () => context.push(
+          '/calendar/event/new'
+          '${_view == _View.month ? '?date=${_dateParam(_selected)}' : ''}',
+        ),
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Event'),
       ),
     );
   }
 
-  List<CalendarEvent> _visible(List<CalendarEvent> all) {
+  Widget _monthLayout(List<CalendarEvent> all) {
+    final perDay = <DateTime, int>{};
+    for (final e in all) {
+      final d = startOfDay(e.startsAt);
+      perDay[d] = (perDay[d] ?? 0) + 1;
+    }
+    final dayEvents =
+        all.where((e) => startOfDay(e.startsAt) == _selected).toList()
+          ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+
+    final month = MonthView(
+      month: _month,
+      selected: _selected,
+      eventCounts: perDay,
+      onSelect: _select,
+      onMonthChanged: (m) => setState(() => _month = m),
+    );
+    final agenda = _DayAgenda(day: _selected, events: dayEvents);
+
+    return LayoutBuilder(
+      builder: (context, c) {
+        if (c.maxWidth >= 760) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 400,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+                  children: [month],
+                ),
+              ),
+              const VerticalDivider(width: 1),
+              Expanded(
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.only(bottom: 96),
+                  children: [agenda],
+                ),
+              ),
+            ],
+          );
+        }
+        return ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 96),
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: month,
+            ),
+            const Divider(height: 24),
+            agenda,
+          ],
+        );
+      },
+    );
+  }
+
+  List<CalendarEvent> _upcoming(List<CalendarEvent> all) {
     final now = DateTime.now();
     final list = _showPast
         ? [...all]
         : all.where((e) => !(e.endsAt ?? e.startsAt).isBefore(now)).toList();
     return list..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+  }
+}
+
+/// The selected day's events, under (or beside) the month grid.
+class _DayAgenda extends StatelessWidget {
+  const _DayAgenda({required this.day, required this.events});
+  final DateTime day;
+  final List<CalendarEvent> events;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Text(
+        eventDayLabel(day) == formatShortDate(day)
+            ? eventDayLabel(day)
+            : '${eventDayLabel(day)} · ${formatShortDate(day)}',
+        style: theme.textTheme.titleMedium,
+      ),
+    );
+    final body = events.isEmpty
+        ? Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            child: Text(
+              'No events — tap + Event to add one.',
+              style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          )
+        : Column(children: [for (final e in events) EventTile(event: e)]);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [header, body],
+    );
   }
 }
 

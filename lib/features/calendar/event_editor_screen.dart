@@ -12,8 +12,11 @@ import '../common/common_widgets.dart';
 
 /// Create (no [eventId]) or edit an event.
 class EventEditorScreen extends ConsumerStatefulWidget {
-  const EventEditorScreen({super.key, this.eventId});
+  const EventEditorScreen({super.key, this.eventId, this.initialDate});
   final String? eventId;
+
+  /// New events only: the day picked in the month view.
+  final DateTime? initialDate;
 
   @override
   ConsumerState<EventEditorScreen> createState() => _EventEditorScreenState();
@@ -39,7 +42,7 @@ class _EventEditorScreenState extends ConsumerState<EventEditorScreen> {
   void initState() {
     super.initState();
     final next = DateTime.now().add(const Duration(hours: 1));
-    _date = startOfDay(next);
+    _date = startOfDay(widget.initialDate ?? next);
     _start = TimeOfDay(hour: next.hour, minute: 0);
     if (_isEdit) {
       _loading = true;
