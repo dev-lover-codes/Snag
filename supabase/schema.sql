@@ -455,3 +455,64 @@ grant execute on function public.start_direct_chat(text) to authenticated;
 
 -- Live delivery of new messages to members (Realtime respects the RLS above).
 alter publication supabase_realtime add table public.messages;
+
+-- E-hardening: members may only move their own read marker. Without this,
+-- the row-level update policy above would also let a user rewrite
+-- conversation_id on their own membership row and join another chat.
+revoke update on public.conversation_members from authenticated, anon;
+grant update (last_read_at) on public.conversation_members to authenticated;
+
+-- Chat list for the signed-in user. SECURITY INVOKER: every read below goes
+-- through the RLS policies above, so it can only ever see the caller's chats.
+create or replace function public.my_chats()
+returns table (
+  conversation_id uuid,
+  other_user_id uuid,
+  other_username text,
+  last_body text,
+  last_at timestamptz,
+  last_sender_id uuid,
+  unread integer
+)
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select
+    me.conversation_id,
+    other.user_id,
+    p.username,
+    last_msg.body,
+    coalesce(last_msg.created_at, c.created_at),
+    last_msg.sender_id,
+    (
+      select count(*)::integer
+      from public.messages m
+      where m.conversation_id = me.conversation_id
+        and m.created_at > me.last_read_at
+        and m.sender_id <> me.user_id
+    )
+  from public.conversation_members me
+  join public.conversations c on c.id = me.conversation_id
+  join public.conversation_members other
+    on other.conversation_id = me.conversation_id and other.user_id <> me.user_id
+  left join public.profiles p on p.id = other.user_id
+  left join lateral (
+    select m.body, m.created_at, m.sender_id
+    from public.messages m
+    where m.conversation_id = me.conversation_id
+    order by m.created_at desc
+    limit 1
+  ) last_msg on true
+  where me.user_id = (select auth.uid())
+  order by coalesce(last_msg.created_at, c.created_at) desc;
+$$;
+
+revoke all on function public.my_chats() from public, anon;
+grant execute on function public.my_chats() to authenticated;
+
+-- E-hardening: clients choose only the conversation and the text;
+-- id, sender and time always come from the database defaults.
+revoke insert on public.messages from authenticated, anon;
+grant insert (conversation_id, body) on public.messages to authenticated;
