@@ -46,11 +46,10 @@ Stage 3 + Mission C (the guaranteed scope), plus all four extras: P1 Drive "My F
 
 Release APK: `flutter build apk --release --dart-define-from-file=env.json`.
 
-Website (same codebase, hosted on Vercel):
+Website (same codebase, hosted on Vercel): every push to `main` builds and deploys it automatically. The settings are in [docs/vercel-setup.md](docs/vercel-setup.md). To try it locally:
 
 ```bash
-flutter build web --release --dart-define-from-file=env.json
-cd build/web && vercel deploy --prod --yes --project snag
+flutter run -d chrome --dart-define-from-file=env.json
 ```
 
 The website shares the same account, data and privacy rules as the app. Browsers have no share sheet or local notifications, so share-into-Snag and "Remind me" are Android-only. Calendar reminders set on the website ring on your phone. Attachments upload straight from the browser, and the offline cache runs in SQLite compiled to WebAssembly (`web/sqlite3.wasm`, `web/drift_worker.js`). On wide screens the app is centered at phone width. The anon key ends up inside the APK. That key is public by design; Row Level Security protects the data.
