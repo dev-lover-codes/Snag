@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,7 +25,7 @@ class MessageBubble extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final maxWidth = MediaQuery.sizeOf(context).width * 0.82;
+    final maxWidth = math.min(MediaQuery.sizeOf(context).width * 0.82, 560.0);
     final isImage = item.type == 'image';
     final isPdf = item.attachmentMime == pdfMime && item.remotePath != null;
 

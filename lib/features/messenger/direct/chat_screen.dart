@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -320,7 +321,7 @@ class _Bubble extends StatelessWidget {
         onLongPress: onLongPress,
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.sizeOf(context).width * 0.8,
+            maxWidth: math.min(MediaQuery.sizeOf(context).width * 0.8, 560),
           ),
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 3),
@@ -334,34 +335,40 @@ class _Bubble extends StatelessWidget {
                 bottomRight: Radius.circular(mine ? 4 : 18),
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (attachment != null)
-                  Padding(
-                    padding: EdgeInsets.only(
-                      bottom: message.body.isEmpty ? 2 : 6,
+            // Fit the bubble to its widest line instead of the max width.
+            child: IntrinsicWidth(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (attachment != null)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        bottom: message.body.isEmpty ? 2 : 6,
+                      ),
+                      child: _ChatAttachmentView(
+                        attachment: attachment,
+                        fg: fg,
+                      ),
                     ),
-                    child: _ChatAttachmentView(attachment: attachment, fg: fg),
-                  ),
-                if (message.body.isNotEmpty)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: LinkifiedText(
-                      text: message.body,
-                      style: TextStyle(color: fg, fontSize: 15.5),
-                      linkColor: scheme.primary,
+                  if (message.body.isNotEmpty)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: LinkifiedText(
+                        text: message.body,
+                        style: TextStyle(color: fg, fontSize: 15.5),
+                        linkColor: scheme.primary,
+                      ),
+                    ),
+                  const SizedBox(height: 2),
+                  Text(
+                    formatTime(message.createdAt),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: fg.withValues(alpha: 0.65),
                     ),
                   ),
-                const SizedBox(height: 2),
-                Text(
-                  formatTime(message.createdAt),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: fg.withValues(alpha: 0.65),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

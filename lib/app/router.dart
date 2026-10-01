@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -159,7 +160,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         parentNavigatorKey: _rootKey,
         path: '/calendar/event/new',
-        builder: (_, _) => const EventEditorScreen(),
+        builder: (_, s) => EventEditorScreen(
+          initialDate: DateTime.tryParse(s.uri.queryParameters['date'] ?? ''),
+        ),
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,
@@ -184,35 +187,90 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
+/// The three tabs, shared by the phone bottom bar and the desktop sidebar.
+const _tabs = [
+  (Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, 'Messenger'),
+  (Icons.folder_outlined, Icons.folder_rounded, 'Drive'),
+  (Icons.calendar_month_outlined, Icons.calendar_month_rounded, 'Calendar'),
+];
+
 class _HomeShell extends StatelessWidget {
   const _HomeShell({required this.shell});
   final StatefulNavigationShell shell;
 
+  void _go(int i) =>
+      shell.goBranch(i, initialLocation: i == shell.currentIndex);
+
   @override
   Widget build(BuildContext context) {
+    // Desktop website: same tabs in a sidebar. Phones keep the bottom bar.
+    if (kIsWeb && MediaQuery.sizeOf(context).width >= 840) {
+      return Scaffold(
+        body: Row(
+          children: [
+            NavigationRail(
+              selectedIndex: shell.currentIndex,
+              onDestinationSelected: _go,
+              labelType: NavigationRailLabelType.all,
+              groupAlignment: -0.85,
+              leading: const Padding(
+                padding: EdgeInsets.only(top: 12, bottom: 8),
+                child: _SnagMark(),
+              ),
+              destinations: [
+                for (final (icon, selected, label) in _tabs)
+                  NavigationRailDestination(
+                    icon: Icon(icon),
+                    selectedIcon: Icon(selected),
+                    label: Text(label),
+                  ),
+              ],
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(child: shell),
+          ],
+        ),
+      );
+    }
     return Scaffold(
       body: shell,
       bottomNavigationBar: NavigationBar(
         selectedIndex: shell.currentIndex,
-        onDestinationSelected: (i) =>
-            shell.goBranch(i, initialLocation: i == shell.currentIndex),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline_rounded),
-            selectedIcon: Icon(Icons.chat_bubble_rounded),
-            label: 'Messenger',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.folder_outlined),
-            selectedIcon: Icon(Icons.folder_rounded),
-            label: 'Drive',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month_rounded),
-            label: 'Calendar',
-          ),
+        onDestinationSelected: _go,
+        destinations: [
+          for (final (icon, selected, label) in _tabs)
+            NavigationDestination(
+              icon: Icon(icon),
+              selectedIcon: Icon(selected),
+              label: label,
+            ),
         ],
+      ),
+    );
+  }
+}
+
+/// Small Snag logo for the top of the desktop sidebar.
+class _SnagMark extends StatelessWidget {
+  const _SnagMark();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: 'Snag',
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [scheme.primary, scheme.tertiary],
+          ),
+        ),
+        child: Icon(Icons.bookmark_added_rounded, color: scheme.onPrimary),
       ),
     );
   }
