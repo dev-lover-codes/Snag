@@ -196,6 +196,7 @@ class _Detail extends ConsumerWidget {
           ),
           if (item.archived)
             _meta(context, Icons.archive_outlined, 'Status', 'Archived'),
+          _ReminderRow(itemId: item.id),
           const SizedBox(height: 20),
           Wrap(
             spacing: 8,
@@ -219,6 +220,11 @@ class _Detail extends ConsumerWidget {
                 onPressed: () => context.push('/item/${item.id}/edit'),
                 icon: const Icon(Icons.edit_outlined),
                 label: const Text('Edit'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => remindMe(context, ref, item),
+                icon: const Icon(Icons.alarm_add_outlined),
+                label: const Text('Remind me'),
               ),
               OutlinedButton.icon(
                 onPressed: () => toggleArchive(context, ref, item),
@@ -254,6 +260,37 @@ class _Detail extends ConsumerWidget {
           const SizedBox(width: 10),
           Text('$label  ', style: TextStyle(color: scheme.onSurfaceVariant)),
           Text(v),
+        ],
+      ),
+    );
+  }
+}
+
+/// The active "Remind me" for this item (device-only), with Cancel.
+class _ReminderRow extends ConsumerWidget {
+  const _ReminderRow({required this.itemId});
+  final String itemId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final at = ref.watch(itemReminderProvider(itemId)).value;
+    if (at == null) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          Icon(Icons.alarm_on_outlined, size: 18, color: scheme.primary),
+          const SizedBox(width: 10),
+          Text('Reminder  ', style: TextStyle(color: scheme.onSurfaceVariant)),
+          Expanded(child: Text(formatDateTime(at))),
+          TextButton(
+            onPressed: () async {
+              await cancelReminder(ref, itemId);
+              showSnack('Reminder cancelled');
+            },
+            child: const Text('Cancel'),
+          ),
         ],
       ),
     );

@@ -4,8 +4,11 @@ import 'package:go_router/go_router.dart';
 
 import '../features/auth/auth_screens.dart';
 import '../features/calendar/calendar_screen.dart';
+import '../features/calendar/event_detail_screen.dart';
+import '../features/calendar/event_editor_screen.dart';
 import '../features/drive/drive_screen.dart';
 import '../features/messenger/chat_list/chat_list_screen.dart';
+import '../features/messenger/direct/chat_screen.dart';
 import '../features/messenger/item_detail/item_detail_screen.dart';
 import '../features/messenger/item_editor/item_editor_screen.dart';
 import '../features/messenger/saved/saved_screen.dart';
@@ -149,6 +152,30 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootKey,
         path: '/profile',
         builder: (_, _) => const ProfileScreen(),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootKey,
+        path: '/calendar/event/new',
+        builder: (_, _) => const EventEditorScreen(),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootKey,
+        path: '/calendar/event/:id',
+        builder: (_, s) => EventDetailScreen(eventId: s.pathParameters['id']!),
+        routes: [
+          GoRoute(
+            parentNavigatorKey: _rootKey,
+            path: 'edit',
+            builder: (_, s) =>
+                EventEditorScreen(eventId: s.pathParameters['id']!),
+          ),
+        ],
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootKey,
+        path: '/chat/:conversationId',
+        builder: (_, s) =>
+            ChatScreen(conversationId: s.pathParameters['conversationId']!),
       ),
     ],
   );

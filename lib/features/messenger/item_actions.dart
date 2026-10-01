@@ -6,9 +6,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/providers.dart';
 import '../../core/errors.dart';
+import '../../core/utils/date_utils.dart';
 import '../../core/utils/tag_utils.dart';
 import '../../data/local/app_database.dart';
 import '../../data/repositories/items_repository.dart';
+import '../../data/repositories/reminders_repository.dart';
 import '../common/common_widgets.dart';
 
 /// Runs a conditional update and walks the user through conflicts (6.3).
@@ -86,6 +88,7 @@ Future<bool> deleteWithConfirm(
   if (!ok) return false;
   try {
     await ref.read(itemsRepositoryProvider).delete(item);
+    await cancelReminder(ref, item.id);
     showSnack('Deleted');
     return true;
   } catch (e) {
@@ -186,6 +189,7 @@ Future<void> showItemMenu(
             'archive',
           ),
           _menuTile(ctx, Icons.copy_rounded, 'Copy', 'copy'),
+          _menuTile(ctx, Icons.alarm_add_outlined, 'Remind me', 'remind'),
           _menuTile(
             ctx,
             Icons.delete_outline,
@@ -208,6 +212,8 @@ Future<void> showItemMenu(
       await toggleArchive(context, ref, item);
     case 'copy':
       await copyItem(item);
+    case 'remind':
+      await remindMe(context, ref, item);
     case 'delete':
       await deleteWithConfirm(context, ref, item);
   }
@@ -370,4 +376,78 @@ class _TagInputState extends State<TagInput> {
       ],
     );
   }
+}
+
+/// "Remind me": Tomorrow / In 3 days / In 7 days at 9:00, or a custom time.
+/// Reminders live on this device only and never appear in Calendar.
+Future<void> remindMe(
+  BuildContext context,
+  WidgetRef ref,
+  SavedItem item,
+) async {
+  final now = DateTime.now();
+  final choice = await showModalBottomSheet<Object>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (days, label) in const [
+            (1, 'Tomorrow, 9:00'),
+            (3, 'In 3 days, 9:00'),
+            (7, 'In 7 days, 9:00'),
+          ])
+            ListTile(
+              leading: const Icon(Icons.alarm_outlined),
+              title: Text(label),
+              subtitle: Text(formatShortDate(reminderPreset(days, now: now))),
+              onTap: () => Navigator.pop(ctx, reminderPreset(days, now: now)),
+            ),
+          ListTile(
+            leading: const Icon(Icons.edit_calendar_outlined),
+            title: const Text('Custom…'),
+            onTap: () => Navigator.pop(ctx, 'custom'),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+  if (choice == null || !context.mounted) return;
+  var at = choice is DateTime ? choice : null;
+  if (choice == 'custom') {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: DateTime(now.year + 5),
+    );
+    if (d == null || !context.mounted) return;
+    final t = await showTimePicker(
+      context: context,
+      initialTime: const TimeOfDay(hour: 9, minute: 0),
+    );
+    if (t == null) return;
+    at = DateTime(d.year, d.month, d.day, t.hour, t.minute);
+  }
+  if (at == null) return;
+  if (!at.isAfter(DateTime.now())) {
+    showSnack('Pick a time in the future');
+    return;
+  }
+  final ok = await ref
+      .read(remindersRepositoryProvider)
+      .set(itemId: item.id, title: item.title, at: at);
+  ref.invalidate(itemReminderProvider(item.id));
+  showSnack(
+    ok
+        ? 'Reminder set for ${formatDateTime(at)}'
+        : 'Notifications are off — allow them in Settings to get reminders.',
+  );
+}
+
+Future<void> cancelReminder(WidgetRef ref, String itemId) async {
+  await ref.read(remindersRepositoryProvider).cancel(itemId);
+  ref.invalidate(itemReminderProvider(itemId));
 }
