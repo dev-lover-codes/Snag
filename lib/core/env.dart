@@ -11,5 +11,5 @@ class Env {
       supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
 
   /// Keep in sync with `version:` in pubspec.yaml.
-  static const appVersion = '1.3.0';
+  static const appVersion = '1.4.0';
 }
