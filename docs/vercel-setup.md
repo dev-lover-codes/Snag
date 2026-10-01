@@ -93,3 +93,15 @@ It sets the caching and security headers.
 | `App not configured` on the live site | `SUPABASE_URL` / `SUPABASE_ANON_KEY` missing for that environment (step 3). Add them, then redeploy. |
 | `No Output Directory named "build/web" found` | Output Directory override is off or misspelt. |
 | Command too long | Copy each command as a single line with no line breaks. |
+
+## 7. Email links (Supabase Site URL)
+
+The Vercel–Supabase integration sets Supabase's **Site URL** to
+`https://snag-its-raaj.vercel.app/` and **resets it on every production
+deployment**. Sign-up confirmation emails link there, so that address must be
+public:
+
+- **Settings → Deployment Protection → Vercel Authentication: off** for this
+  project. If it's on, email links ask for a Vercel login.
+- `https://snag-teal.vercel.app/**` is also in Supabase's Redirect URLs, so
+  either address works.
