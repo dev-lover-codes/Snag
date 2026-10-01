@@ -153,11 +153,14 @@ void main() {
 
   group('Chats', () {
     late _FakeChats remote;
+    late _FakeStorage storage;
     late ChatsRepository repo;
     setUp(() {
       remote = _FakeChats();
+      storage = _FakeStorage();
       repo = ChatsRepository(
         remote: remote,
+        storage: storage,
         currentUserId: () => 'me',
         isOnline: () => true,
       );
@@ -178,6 +181,64 @@ void main() {
       );
       await repo.send('c', '  hi 👋 ');
       expect(remote.sent, 'hi 👋');
+    });
+
+    test('attachments upload into the conversation folder', () async {
+      await repo.send(
+        'conv-1',
+        '',
+        file: PickedAttachment(
+          path: 'web:My scan.pdf',
+          mime: pdfMime,
+          name: 'My scan.pdf',
+          bytes: Uint8List.fromList([1, 2, 3]),
+        ),
+      );
+      expect(
+        storage.uploaded.single,
+        matches(RegExp(r'^conv-1/[0-9a-f-]{36}/My_scan\.pdf$')),
+      );
+      expect(remote.attachment?.name, 'My scan.pdf');
+      expect(remote.attachment?.size, 3);
+      expect(remote.sent, '');
+    });
+
+    test('a failed insert removes the uploaded file', () async {
+      remote.failSend = true;
+      await expectLater(
+        repo.send(
+          'conv-1',
+          'caption',
+          file: PickedAttachment(
+            path: 'web:a.png',
+            mime: 'image/png',
+            name: 'a.png',
+            bytes: Uint8List.fromList([1]),
+          ),
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(storage.removed, storage.uploaded);
+    });
+
+    test('deleting a message also removes its file', () async {
+      await repo.delete(
+        ChatMessage(
+          id: 'm1',
+          conversationId: 'conv-1',
+          senderId: 'me',
+          body: '',
+          createdAt: DateTime(2026),
+          attachment: const ChatAttachment(
+            path: 'conv-1/x/a.png',
+            mime: 'image/png',
+            name: 'a.png',
+            size: 1,
+          ),
+        ),
+      );
+      expect(remote.deleted, 'm1');
+      expect(storage.removed, ['conv-1/x/a.png']);
     });
   });
 }
@@ -219,6 +280,15 @@ class _FailingDriveRemote implements DriveRemote {
 class _FakeChats implements ChatsRemote {
   String? started;
   String? sent;
+  ChatAttachment? attachment;
+  String? deleted;
+  bool failSend = false;
+  @override
+  Future<bool> delete(String messageId) async {
+    deleted = messageId;
+    return true;
+  }
+
   @override
   Future<List<ChatSummary>> myChats() async => const [];
   @override
@@ -230,8 +300,14 @@ class _FakeChats implements ChatsRemote {
   @override
   Future<List<ChatMessage>> messages(String conversationId) async => const [];
   @override
-  Future<ChatMessage> send(String conversationId, String body) async {
+  Future<ChatMessage> send(
+    String conversationId,
+    String body, {
+    ChatAttachment? attachment,
+  }) async {
+    if (failSend) throw StateError('insert failed');
     sent = body;
+    this.attachment = attachment;
     return ChatMessage(
       id: '1',
       conversationId: conversationId,

@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -11,6 +13,7 @@ import '../../../core/utils/date_utils.dart';
 import '../../../data/remote/chats_remote.dart';
 import '../../../data/repositories/chats_repository.dart';
 import '../../common/common_widgets.dart';
+import '../attachment_picker.dart';
 import '../item_actions.dart';
 
 /// A 1:1 text chat with live delivery (Supabase Realtime + RLS).
@@ -59,7 +62,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       setState(() {
         _messages
           ..clear()
-          ..addAll(list);
+          ..addAll(list)
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
         _loading = false;
       });
       _markRead();
@@ -86,6 +90,101 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (_messages.isEmpty) return;
     await _repo.markRead(widget.conversationId, _messages.last.createdAt);
     if (mounted) ref.invalidate(chatsProvider);
+  }
+
+  /// 📎: pick an image or PDF and send it, using the typed text as caption.
+  Future<void> _attach() async {
+    if (_sending) return;
+    final kind = await chooseAttachKind(context);
+    if (kind == null || !mounted) return;
+    final picked = await pickAttachment(ref, kind);
+    if (picked == null || !mounted) return;
+    setState(() => _sending = true);
+    try {
+      final sent = await _repo.send(
+        widget.conversationId,
+        _text.text,
+        file: picked,
+      );
+      _text.clear();
+      _add(sent);
+    } catch (e) {
+      showSnack(userMessageFor(e));
+    } finally {
+      if (picked.bytes == null) {
+        try {
+          File(picked.path).deleteSync();
+        } catch (_) {}
+      }
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  /// Long-press: Copy · Open attachment · Delete (own messages only).
+  Future<void> _showMenu(ChatMessage m, {required bool mine}) async {
+    final scheme = Theme.of(context).colorScheme;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (m.body.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded),
+                title: const Text('Copy text'),
+                onTap: () => Navigator.pop(ctx, 'copy'),
+              ),
+            if (m.attachment != null)
+              ListTile(
+                leading: Icon(
+                  m.attachment!.isPdf
+                      ? Icons.picture_as_pdf_outlined
+                      : Icons.image_outlined,
+                ),
+                title: Text(m.attachment!.isPdf ? 'Open PDF' : 'View image'),
+                onTap: () => Navigator.pop(ctx, 'open'),
+              ),
+            if (mine)
+              ListTile(
+                leading: Icon(Icons.delete_outline, color: scheme.error),
+                title: Text('Delete', style: TextStyle(color: scheme.error)),
+                onTap: () => Navigator.pop(ctx, 'delete'),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (action == null || !mounted) return;
+    switch (action) {
+      case 'copy':
+        await Clipboard.setData(ClipboardData(text: m.body));
+        showSnack('Copied');
+      case 'open':
+        await openChatAttachment(context, ref, m.attachment!);
+      case 'delete':
+        final ok = await confirmDialog(
+          context,
+          title: 'Delete this message?',
+          message: m.attachment == null
+              ? 'It will be deleted for both of you.'
+              : 'The message and its file will be deleted for both of you.',
+          confirmLabel: 'Delete',
+          destructive: true,
+        );
+        if (!ok) return;
+        try {
+          await _repo.delete(m);
+          if (!mounted) return;
+          setState(() => _messages.removeWhere((x) => x.id == m.id));
+          ref.invalidate(chatsProvider);
+          showSnack('Message deleted');
+        } catch (e) {
+          showSnack(userMessageFor(e));
+        }
+    }
   }
 
   Future<void> _send() async {
@@ -128,7 +227,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           : Column(
               children: [
                 Expanded(child: _body(context)),
-                _Composer(controller: _text, sending: _sending, onSend: _send),
+                _Composer(
+                  controller: _text,
+                  sending: _sending,
+                  onSend: _send,
+                  onAttach: _attach,
+                ),
               ],
             ),
     );
@@ -158,7 +262,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         return Column(
           children: [
             if (showDate) _DateChip(label: daySeparatorLabel(m.createdAt)),
-            _Bubble(message: m, mine: m.senderId == me),
+            _Bubble(
+              message: m,
+              mine: m.senderId == me,
+              onLongPress: () => _showMenu(m, mine: m.senderId == me),
+            ),
           ],
         );
       },
@@ -191,54 +299,223 @@ class _DateChip extends StatelessWidget {
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.message, required this.mine});
+  const _Bubble({
+    required this.message,
+    required this.mine,
+    required this.onLongPress,
+  });
   final ChatMessage message;
   final bool mine;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final bg = mine ? scheme.primaryContainer : scheme.surfaceContainerHigh;
     final fg = mine ? scheme.onPrimaryContainer : scheme.onSurface;
+    final attachment = message.attachment;
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.8,
-        ),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 3),
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(18),
-              topRight: const Radius.circular(18),
-              bottomLeft: Radius.circular(mine ? 18 : 4),
-              bottomRight: Radius.circular(mine ? 4 : 18),
+      child: GestureDetector(
+        onLongPress: onLongPress,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * 0.8,
+          ),
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 3),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(18),
+                topRight: const Radius.circular(18),
+                bottomLeft: Radius.circular(mine ? 18 : 4),
+                bottomRight: Radius.circular(mine ? 4 : 18),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (attachment != null)
+                  Padding(
+                    padding: EdgeInsets.only(
+                      bottom: message.body.isEmpty ? 2 : 6,
+                    ),
+                    child: _ChatAttachmentView(attachment: attachment, fg: fg),
+                  ),
+                if (message.body.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: LinkifiedText(
+                      text: message.body,
+                      style: TextStyle(color: fg, fontSize: 15.5),
+                      linkColor: scheme.primary,
+                    ),
+                  ),
+                const SizedBox(height: 2),
+                Text(
+                  formatTime(message.createdAt),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: fg.withValues(alpha: 0.65),
+                  ),
+                ),
+              ],
             ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: LinkifiedText(
-                  text: message.body,
-                  style: TextStyle(color: fg, fontSize: 15.5),
-                  linkColor: scheme.primary,
+        ),
+      ),
+    );
+  }
+}
+
+/// Image thumbnail or PDF chip inside a chat bubble (signed link, members only).
+class _ChatAttachmentView extends ConsumerWidget {
+  const _ChatAttachmentView({required this.attachment, required this.fg});
+  final ChatAttachment attachment;
+  final Color fg;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    if (attachment.isPdf) {
+      return Material(
+        color: scheme.surface.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => openChatAttachment(context, ref, attachment),
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: scheme.errorContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.picture_as_pdf_rounded,
+                    color: scheme.onErrorContainer,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                formatTime(message.createdAt),
-                style: TextStyle(
-                  fontSize: 11,
-                  color: fg.withValues(alpha: 0.65),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        attachment.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: fg,
+                        ),
+                      ),
+                      Text(
+                        'PDF · ${formatBytes(attachment.size)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: fg.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
+        ),
+      );
+    }
+    Widget box(Widget child) => ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(width: 240, height: 200, child: child),
+    );
+    return GestureDetector(
+      onTap: () => openChatAttachment(context, ref, attachment),
+      child: ref
+          .watch(directFileUrlProvider(attachment.path))
+          .when(
+            data: (url) => box(
+              Image.network(
+                url,
+                fit: BoxFit.cover,
+                cacheWidth: 600,
+                errorBuilder: (_, _, _) => ColoredBox(
+                  color: scheme.surfaceContainerHighest,
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
+            loading: () => box(
+              ColoredBox(
+                color: scheme.surfaceContainerHighest,
+                child: const Center(child: CircularProgressIndicator()),
+              ),
+            ),
+            error: (_, _) => box(
+              ColoredBox(
+                color: scheme.surfaceContainerHighest,
+                child: Icon(
+                  Icons.cloud_off_outlined,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+    );
+  }
+}
+
+/// Opens a chat attachment: images full screen, PDFs in another app.
+Future<void> openChatAttachment(
+  BuildContext context,
+  WidgetRef ref,
+  ChatAttachment a,
+) async {
+  if (!a.isPdf) {
+    Navigator.of(
+      context,
+      rootNavigator: true,
+    ).push(MaterialPageRoute(builder: (_) => _ChatImageViewer(attachment: a)));
+    return;
+  }
+  try {
+    await openLink(await ref.read(directFileUrlProvider(a.path).future));
+  } catch (e) {
+    showSnack(userMessageFor(e));
+  }
+}
+
+class _ChatImageViewer extends ConsumerWidget {
+  const _ChatImageViewer({required this.attachment});
+  final ChatAttachment attachment;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final url = ref.watch(directFileUrlProvider(attachment.path));
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(attachment.name, overflow: TextOverflow.ellipsis),
+      ),
+      body: url.when(
+        data: (u) => InteractiveViewer(
+          maxScale: 5,
+          child: Center(child: Image.network(u, fit: BoxFit.contain)),
+        ),
+        loading: () => const LoadingView(),
+        error: (e, _) => ErrorView(
+          message: userMessageFor(e),
+          onRetry: () => ref.invalidate(directFileUrlProvider(attachment.path)),
         ),
       ),
     );
@@ -324,10 +601,12 @@ class _Composer extends StatelessWidget {
     required this.controller,
     required this.sending,
     required this.onSend,
+    required this.onAttach,
   });
   final TextEditingController controller;
   final bool sending;
   final VoidCallback onSend;
+  final VoidCallback onAttach;
 
   @override
   Widget build(BuildContext context) {
@@ -337,10 +616,15 @@ class _Composer extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+          padding: const EdgeInsets.fromLTRB(4, 6, 6, 6),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              IconButton(
+                tooltip: 'Attach image or PDF',
+                onPressed: sending ? null : onAttach,
+                icon: const Icon(Icons.attach_file_rounded),
+              ),
               Expanded(
                 child: TextField(
                   controller: controller,

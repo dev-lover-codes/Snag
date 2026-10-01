@@ -262,10 +262,16 @@ final chatsRepositoryProvider = Provider<ChatsRepository>((ref) {
   final connectivity = ref.watch(connectivityServiceProvider);
   return ChatsRepository(
     remote: SupabaseChatsRemote(client),
+    storage: SupabaseStorageRemote(client, bucket: 'direct-files'),
     currentUserId: () => client.auth.currentUser?.id,
     isOnline: () => connectivity.isOnline,
   );
 });
+
+/// Signed link for a 1:1 chat attachment (cached for the session).
+final directFileUrlProvider = FutureProvider.family<String, String>(
+  (ref, path) => ref.watch(chatsRepositoryProvider).signedUrl(path),
+);
 
 /// My conversations, refreshed whenever a new message arrives in any of them.
 final chatsProvider = StreamProvider<List<ChatSummary>>((ref) async* {

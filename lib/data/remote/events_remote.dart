@@ -87,7 +87,10 @@ class SupabaseEventsRemote implements EventsRemote {
 
   @override
   Future<List<CalendarEvent>> fetchAll() async {
-    final rows = await _table.select().order('starts_at').timeout(_timeout);
+    final rows = await _table
+        .select()
+        .order('starts_at', ascending: true)
+        .timeout(_timeout);
     return rows.map(CalendarEvent.fromRow).toList();
   }
 
