@@ -62,3 +62,17 @@ String formatBytes(int bytes) {
   if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
   return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }
+
+/// Calendar group label: Today, Tomorrow, Yesterday, then `Mon, Oct 3`.
+String eventDayLabel(DateTime d, {DateTime? now}) {
+  final today = _dayOf(now ?? DateTime.now());
+  final diff = _dayOf(d).difference(today).inDays;
+  if (diff == 0) return 'Today';
+  if (diff == 1) return 'Tomorrow';
+  if (diff == -1) return 'Yesterday';
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  return '${days[d.toLocal().weekday - 1]}, ${formatShortDate(d, now: now)}';
+}
+
+/// Start of the local day containing [d].
+DateTime startOfDay(DateTime d) => _dayOf(d);
