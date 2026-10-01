@@ -49,12 +49,22 @@ class AuthRepository {
     }
   }
 
+  /// [login] is an email address or a username (an optional leading @ is
+  /// ignored).
   Future<Result<void>> signIn({
-    required String email,
+    required String login,
     required String password,
   }) async {
+    final id = login.trim();
     try {
-      await _remote.signIn(email: email.trim(), password: password);
+      if (id.contains('@') && !id.startsWith('@')) {
+        await _remote.signIn(email: id, password: password);
+      } else {
+        await _remote.signInWithUsername(
+          username: id.replaceFirst('@', '').toLowerCase(),
+          password: password,
+        );
+      }
       return const Ok(null);
     } catch (e) {
       return Err(userMessageFor(e));

@@ -31,7 +31,7 @@ class Messages {
 
   static const itemGone = 'This item no longer exists.';
   static const offlineWrite = "You're offline — your draft is saved.";
-  static const wrongCredentials = 'Wrong email or password.';
+  static const wrongCredentials = 'Wrong email, username or password.';
   static const emailTaken = 'An account with this email already exists.';
   static const serverUnreachable = "Couldn't reach Snag's server.";
   static const fileTooLarge = 'File must be 10 MB or smaller.';

@@ -168,7 +168,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
     final res = await ref
         .read(authRepositoryProvider)
-        .signIn(email: _email.text, password: _password.text);
+        .signIn(login: _email.text, password: _password.text);
     if (!mounted) return;
     setState(() {
       _busy = false;
@@ -192,12 +192,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 controller: _email,
                 keyboardType: TextInputType.emailAddress,
                 autocorrect: false,
-                autofillHints: const [AutofillHints.email],
+                enableSuggestions: false,
+                autofillHints: const [
+                  AutofillHints.email,
+                  AutofillHints.username,
+                ],
                 textInputAction: TextInputAction.next,
-                validator: validateEmail,
+                validator: validateLoginId,
                 decoration: const InputDecoration(
-                  labelText: 'Email',
-                  prefixIcon: Icon(Icons.mail_outline),
+                  labelText: 'Email or username',
+                  prefixIcon: Icon(Icons.person_outline_rounded),
                 ),
               ),
               const SizedBox(height: 12),

@@ -17,6 +17,17 @@ String? validateEmail(String? value) {
   return null;
 }
 
+/// Sign-in field: an email address or a username.
+String? validateLoginId(String? value) {
+  final v = (value ?? '').trim();
+  if (v.isEmpty) return 'Enter your email or username';
+  if (v.contains('@') && !v.startsWith('@')) return validateEmail(v);
+  if (!usernamePattern.hasMatch(v.replaceFirst('@', '').toLowerCase())) {
+    return 'Enter a valid email or username';
+  }
+  return null;
+}
+
 String? validatePassword(String? value) {
   final v = value ?? '';
   if (v.isEmpty) return 'Enter your password';
