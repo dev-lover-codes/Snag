@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -102,6 +103,7 @@ class _EventEditorScreenState extends ConsumerState<EventEditorScreen> {
       final repo = ref.read(eventsRepositoryProvider);
       validateEvent(input);
       if (_remind != null &&
+          !kIsWeb &&
           !await ref.read(notificationServiceProvider).ensurePermission()) {
         showSnack(
           'Notifications are off — the event is saved without an alert.',
@@ -273,9 +275,12 @@ class _EventEditorScreenState extends ConsumerState<EventEditorScreen> {
         const SizedBox(height: 8),
         DropdownButtonFormField<int?>(
           initialValue: _remind,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Reminder',
-            prefixIcon: Icon(Icons.notifications_outlined),
+            prefixIcon: const Icon(Icons.notifications_outlined),
+            helperText: kIsWeb
+                ? 'Alerts ring on your phone with Snag installed'
+                : null,
           ),
           items: [
             for (final c in reminderChoices.entries)

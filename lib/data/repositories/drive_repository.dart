@@ -43,8 +43,7 @@ class DriveRepository {
   /// if the insert fails so nothing is orphaned.
   Future<DriveFile> upload(PickedAttachment file) async {
     _requireOnline();
-    final src = File(file.path);
-    final size = await src.length();
+    final size = file.size;
     if (size <= 0) throw const ValidationException('That file is empty');
     if (size > maxAttachmentBytes) {
       throw const ValidationException(Messages.fileTooLarge);
@@ -52,7 +51,11 @@ class DriveRepository {
     final id = const Uuid().v4();
     final name = cleanFileName(file.name, mime: file.mime);
     final path = '$_uid/$id/${storageSafeName(name)}';
-    await _storage.upload(path, src, file.mime);
+    if (file.bytes != null) {
+      await _storage.uploadBytes(path, file.bytes!, file.mime);
+    } else {
+      await _storage.upload(path, File(file.path), file.mime);
+    }
     try {
       return await _remote.insert(
         id: id,

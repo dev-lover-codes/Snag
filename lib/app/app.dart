@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -10,6 +11,7 @@ import '../services/share_intent_service.dart';
 import 'providers.dart';
 import 'router.dart';
 import 'theme.dart';
+import 'web_frame.dart';
 
 class SnagApp extends ConsumerStatefulWidget {
   const SnagApp({super.key, this.shareService});
@@ -99,6 +101,7 @@ class _SnagAppState extends ConsumerState<SnagApp> {
       darkTheme: buildTheme(Brightness.dark),
       themeMode: ThemeMode.system,
       routerConfig: ref.watch(routerProvider),
+      builder: (context, child) => kIsWeb ? WebFrame(child: child!) : child!,
     );
   }
 }

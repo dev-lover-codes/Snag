@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -184,6 +185,9 @@ void main() {
 class _FakeStorage implements StorageRemote {
   final uploaded = <String>[];
   final removed = <String>[];
+  @override
+  Future<void> uploadBytes(String path, Uint8List bytes, String mime) async =>
+      upload(path, File(path), mime);
   @override
   Future<void> upload(String path, File file, String mime) async =>
       uploaded.add(path);

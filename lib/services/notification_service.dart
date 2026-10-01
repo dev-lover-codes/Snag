@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -30,6 +31,8 @@ class NotificationService {
 
   /// Returns the route of the notification that launched the app, if any.
   Future<String?> init() async {
+    // Website: no local notifications; reminders ring on the phone app.
+    if (kIsWeb) return null;
     try {
       tzdata.initializeTimeZones();
       try {

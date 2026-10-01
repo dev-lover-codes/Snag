@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -71,6 +72,7 @@ Future<PickedAttachment?> pickAttachment(WidgetRef ref, AttachKind kind) async {
           // Compressed output is JPEG even when the name says otherwise.
           name = '${p.basenameWithoutExtension(name)}.jpg';
         }
+        if (kIsWeb) return _inMemory(await x.readAsBytes(), name, image: true);
         final staged = await repo.stagePickedFile(x.path, name: name);
         if (staged.isPdf) {
           throw const ValidationException('Pick an image file');
@@ -85,6 +87,7 @@ Future<PickedAttachment?> pickAttachment(WidgetRef ref, AttachKind kind) async {
         if (p.extension(f.name).toLowerCase() != '.pdf') {
           throw const ValidationException('Only PDF files can be attached');
         }
+        if (kIsWeb) return _inMemory(await f.readAsBytes(), f.name);
         final size = f.lengthSync() ?? await f.length();
         if (size != null && size > maxAttachmentBytes) {
           throw const ValidationException(Messages.pdfTooLarge);
@@ -104,4 +107,26 @@ Future<PickedAttachment?> pickAttachment(WidgetRef ref, AttachKind kind) async {
     showSnack(e is ValidationException ? e.message : "Couldn't open that file");
     return null;
   }
+}
+
+/// Website: browsers give bytes, not paths, so the file stays in memory.
+PickedAttachment _inMemory(Uint8List bytes, String name, {bool image = false}) {
+  final mime = mimeForPath(name);
+  if (mime == null || (image && mime == pdfMime)) {
+    throw ValidationException(
+      image ? 'Pick an image file' : 'Only JPEG, PNG, WebP or PDF files',
+    );
+  }
+  if (bytes.isEmpty) throw const ValidationException('That file is empty');
+  if (bytes.length > maxAttachmentBytes) {
+    throw ValidationException(
+      mime == pdfMime ? Messages.pdfTooLarge : Messages.fileTooLarge,
+    );
+  }
+  return PickedAttachment(
+    path: 'web:$name',
+    mime: mime,
+    name: name,
+    bytes: bytes,
+  );
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -189,7 +190,8 @@ Future<void> showItemMenu(
             'archive',
           ),
           _menuTile(ctx, Icons.copy_rounded, 'Copy', 'copy'),
-          _menuTile(ctx, Icons.alarm_add_outlined, 'Remind me', 'remind'),
+          if (!kIsWeb)
+            _menuTile(ctx, Icons.alarm_add_outlined, 'Remind me', 'remind'),
           _menuTile(
             ctx,
             Icons.delete_outline,

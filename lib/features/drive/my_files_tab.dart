@@ -35,9 +35,11 @@ class _MyFilesTabState extends ConsumerState<MyFilesTab> {
     } catch (e) {
       showSnack(userMessageFor(e), actionLabel: 'Retry', onAction: _upload);
     } finally {
-      try {
-        File(picked.path).deleteSync();
-      } catch (_) {}
+      if (picked.bytes == null) {
+        try {
+          File(picked.path).deleteSync();
+        } catch (_) {}
+      }
       if (mounted) setState(() => _uploading = false);
     }
   }

@@ -21,6 +21,7 @@ class ShareIntentService {
   /// [onShare] gets the shared text (possibly null/empty for unsupported
   /// shares — the caller shows "Nothing to save from this share").
   Future<void> start(void Function(String? text) onShare) async {
+    if (kIsWeb) return; // The website has no Android share sheet.
     try {
       _sub = _plugin.getMediaStream().listen(
         (files) => _handle(files, onShare),

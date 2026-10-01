@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -37,7 +38,7 @@ class AttachmentImage extends ConsumerWidget {
     );
 
     final local = item.localAttachmentPath;
-    if (local != null && File(local).existsSync()) {
+    if (!kIsWeb && local != null && File(local).existsSync()) {
       return Image.file(
         File(local),
         fit: fit,
@@ -92,7 +93,7 @@ class PdfChip extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final local = item.localAttachmentPath;
     String? size;
-    if (local != null) {
+    if (!kIsWeb && local != null) {
       try {
         final f = File(local);
         if (f.existsSync()) size = formatBytes(f.lengthSync());

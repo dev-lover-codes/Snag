@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -221,11 +222,12 @@ class _Detail extends ConsumerWidget {
                 icon: const Icon(Icons.edit_outlined),
                 label: const Text('Edit'),
               ),
-              OutlinedButton.icon(
-                onPressed: () => remindMe(context, ref, item),
-                icon: const Icon(Icons.alarm_add_outlined),
-                label: const Text('Remind me'),
-              ),
+              if (!kIsWeb)
+                OutlinedButton.icon(
+                  onPressed: () => remindMe(context, ref, item),
+                  icon: const Icon(Icons.alarm_add_outlined),
+                  label: const Text('Remind me'),
+                ),
               OutlinedButton.icon(
                 onPressed: () => toggleArchive(context, ref, item),
                 icon: Icon(

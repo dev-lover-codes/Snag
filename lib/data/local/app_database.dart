@@ -10,7 +10,17 @@ part 'app_database.g.dart';
 @DriftDatabase(tables: [Items, Drafts])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
-    : super(executor ?? driftDatabase(name: 'snag'));
+    : super(
+        executor ??
+            driftDatabase(
+              name: 'snag',
+              // Website: SQLite compiled to WebAssembly (files in web/).
+              web: DriftWebOptions(
+                sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+                driftWorker: Uri.parse('drift_worker.js'),
+              ),
+            ),
+      );
 
   @override
   int get schemaVersion => 1;

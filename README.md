@@ -4,7 +4,7 @@
 
 <img src="docs/screenshots/login.png" width="260" alt="Snag login screen">
 
-**Download:** [latest APK from GitHub Releases](https://github.com/dev-lover-codes/Snag/releases/latest)
+**Download:** [latest APK from GitHub Releases](https://github.com/dev-lover-codes/Snag/releases/latest) · **Website:** [snag-teal.vercel.app](https://snag-teal.vercel.app)
 
 ## Stage reached
 
@@ -44,7 +44,16 @@ Stage 3 + Mission C (the guaranteed scope), plus all four extras: P1 Drive "My F
 3. `flutter pub get`
 4. `flutter run --dart-define-from-file=env.json`
 
-Release APK: `flutter build apk --release --dart-define-from-file=env.json`. The anon key ends up inside the APK. That key is public by design; Row Level Security protects the data.
+Release APK: `flutter build apk --release --dart-define-from-file=env.json`.
+
+Website (same codebase, hosted on Vercel):
+
+```bash
+flutter build web --release --dart-define-from-file=env.json
+cd build/web && vercel deploy --prod --yes --project snag
+```
+
+The website shares the same account, data and privacy rules as the app. Browsers have no share sheet or local notifications, so share-into-Snag and "Remind me" are Android-only. Calendar reminders set on the website ring on your phone. Attachments upload straight from the browser, and the offline cache runs in SQLite compiled to WebAssembly (`web/sqlite3.wasm`, `web/drift_worker.js`). On wide screens the app is centered at phone width. The anon key ends up inside the APK. That key is public by design; Row Level Security protects the data.
 
 If either value is missing, the app shows an "App not configured" screen instead of crashing.
 

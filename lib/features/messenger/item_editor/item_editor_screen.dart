@@ -581,12 +581,19 @@ class _ItemEditorScreenState extends ConsumerState<ItemEditorScreen> {
     final att = _newAttachment;
     Widget? preview;
     if (att != null && !att.isPdf) {
-      preview = Image.file(
-        File(att.path),
-        height: 220,
-        width: double.infinity,
-        fit: BoxFit.cover,
-      );
+      preview = att.bytes != null
+          ? Image.memory(
+              att.bytes!,
+              height: 220,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            )
+          : Image.file(
+              File(att.path),
+              height: 220,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            );
     } else if (_hasExistingAttachment && _original!.attachmentMime != pdfMime) {
       preview = AttachmentImage(item: _original!, height: 220);
     }

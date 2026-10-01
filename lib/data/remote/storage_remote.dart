@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -8,6 +9,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// reject anything outside the caller's own folder.
 abstract class StorageRemote {
   Future<void> upload(String path, File file, String mime);
+
+  /// Website uploads (no file paths in the browser).
+  Future<void> uploadBytes(String path, Uint8List bytes, String mime);
   Future<void> remove(String path);
 
   /// Signed URL valid for 1 hour, cached in memory for the session.
@@ -33,6 +37,17 @@ class SupabaseStorageRemote implements StorageRemote {
         .upload(
           path,
           file,
+          fileOptions: FileOptions(contentType: mime, upsert: true),
+        )
+        .timeout(_timeout);
+  }
+
+  @override
+  Future<void> uploadBytes(String path, Uint8List bytes, String mime) async {
+    await _bucket
+        .uploadBinary(
+          path,
+          bytes,
           fileOptions: FileOptions(contentType: mime, upsert: true),
         )
         .timeout(_timeout);

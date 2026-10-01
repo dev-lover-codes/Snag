@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
+import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:path/path.dart' as p;
 
 import '../../core/errors.dart';
@@ -46,16 +47,23 @@ class PickedAttachment {
     required this.path,
     required this.mime,
     required this.name,
+    this.bytes,
   });
   final String path;
   final String mime;
   final String name;
 
+  /// Website only: the picked file held in memory (browsers have no file
+  /// paths). Null on Android, where [path] points into app storage.
+  final Uint8List? bytes;
+
   bool get isPdf => mime == pdfMime;
+  bool get exists => bytes != null || File(path).existsSync();
+  int get size => bytes?.length ?? File(path).lengthSync();
 
   Map<String, dynamic> toJson() => {'path': path, 'mime': mime, 'name': name};
   static PickedAttachment? fromJson(Object? json) {
-    if (json is! Map) return null;
+    if (kIsWeb || json is! Map) return null;
     final path = json['path'], mime = json['mime'], name = json['name'];
     if (path is! String || mime is! String || name is! String) return null;
     if (!File(path).existsSync()) return null;
@@ -267,11 +275,10 @@ class ItemsRepository {
 
     final att = input.newAttachment;
     if (att != null) {
-      final f = File(att.path);
-      if (!f.existsSync()) {
+      if (!att.exists) {
         throw const ValidationException('The attached file is missing');
       }
-      if (f.lengthSync() > maxAttachmentBytes) {
+      if (att.size > maxAttachmentBytes) {
         throw ValidationException(
           att.isPdf ? Messages.pdfTooLarge : Messages.fileTooLarge,
         );
@@ -312,7 +319,7 @@ class ItemsRepository {
     final att = input.newAttachment;
     if (att != null) {
       uploaded = _storagePath(uid, id, att.name);
-      await _storage.upload(uploaded, File(att.path), att.mime);
+      await _uploadAttachment(uploaded, att);
     }
 
     final SavedItem saved;
@@ -347,7 +354,7 @@ class ItemsRepository {
     final att = input.newAttachment;
     if (att != null) {
       uploaded = _storagePath(uid, original.id, att.name);
-      await _storage.upload(uploaded, File(att.path), att.mime);
+      await _uploadAttachment(uploaded, att);
     }
 
     final newPath = att != null ? uploaded : write.attachmentPath;
@@ -509,7 +516,8 @@ class ItemsRepository {
     return PickedAttachment(path: dest, mime: mime, name: fileName);
   }
 
-  Future<String> _keepLocalCopy(String id, PickedAttachment att) async {
+  Future<String?> _keepLocalCopy(String id, PickedAttachment att) async {
+    if (att.bytes != null) return null; // website: no local file copies
     final dir = Directory(p.join((await _docs()).path, 'attachments'));
     await dir.create(recursive: true);
     final dest = p.join(dir.path, '$id.${extensionForMime(att.mime)}');
@@ -524,6 +532,11 @@ class ItemsRepository {
       if (f.existsSync()) f.deleteSync();
     } catch (_) {}
   }
+
+  Future<void> _uploadAttachment(String path, PickedAttachment att) =>
+      att.bytes != null
+      ? _storage.uploadBytes(path, att.bytes!, att.mime)
+      : _storage.upload(path, File(att.path), att.mime);
 
   Future<void> _bestEffortRemove(String path) async {
     try {
@@ -558,6 +571,7 @@ class ItemsRepository {
   Future<void> wipeLocal() async {
     _storage.clearCache();
     await _db.wipe();
+    if (kIsWeb) return;
     final docs = await _docs();
     for (final name in ['attachments', 'pending']) {
       final dir = Directory(p.join(docs.path, name));
