@@ -7,6 +7,11 @@ every time you push to `main` on GitHub. You no longer need to run
 Vercel has no Flutter installed, so the **Install Command** downloads Flutter
 3.47.5 (the version this project uses) into the build machine first.
 
+> **These settings already live in [`vercel.json`](../vercel.json)**
+> (`installCommand`, `buildCommand`, `outputDirectory`). Vercel uses the file
+> over the dashboard, so you can leave the dashboard Override switches off.
+> The table below is for reference only. To change a command, edit `vercel.json` and push.
+
 ---
 
 ## 1. Project Settings → Build and Deployment → Framework Settings
@@ -84,7 +89,7 @@ It sets the caching and security headers.
 
 | Message in the build log | Fix |
 |---|---|
-| `flutter: command not found` | The Install Command was not saved, or Override is off. |
+| `.flutter-sdk/bin/flutter: No such file or directory` | The Install Command didn't run. Check that `vercel.json` at the repo root still has `installCommand`. |
 | `App not configured` on the live site | `SUPABASE_URL` / `SUPABASE_ANON_KEY` missing for that environment (step 3). Add them, then redeploy. |
 | `No Output Directory named "build/web" found` | Output Directory override is off or misspelt. |
 | Command too long | Copy each command as a single line with no line breaks. |
