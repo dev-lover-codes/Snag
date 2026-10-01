@@ -31,6 +31,9 @@ String? _safeFrom(String? from) {
     return null;
   }
   if (from.startsWith('/login') || from.startsWith('/signup')) return null;
+  // Email-link leftovers such as `/error=otp_expired&…` or `/access_token=…`
+  // are not app routes.
+  if (from.split('?').first.contains('=')) return null;
   return from;
 }
 
