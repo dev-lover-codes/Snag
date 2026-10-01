@@ -8,14 +8,24 @@
 
 ## Stage reached
 
-Stage 3 + Mission C (plan.md, guaranteed scope):
+Stage 3 + Mission C (the guaranteed scope), plus all four extras: P1 Drive "My Files", P2 Calendar, P3 Mission D reminders and P4 1:1 chats.
 
-- Saved Messages with notes, links, images and PDFs; create, view, open, edit, delete, archive and restore; tags; search; type, tag and archive filters.
-- Email + password accounts with usernames; cloud sync through Supabase; offline cache; conflict dialog.
-- Share text and URLs into Snag from Android's share menu, whether the app is closed or already open.
-- Image and PDF attachments in private storage; Drive → **From Chats** (read-only).
+## Features by tab
 
-The Oct 11 pick (P1–P4) is not built yet. Calendar and Drive → My Files show "Coming soon".
+**Messenger**
+- **Saved Messages** (pinned): notes, links, images and PDFs; create, view, open, edit, delete, archive and restore; tags; search; type, tag and archive filters; date separators; drafts.
+- **Remind me** on any saved item (Tomorrow / In 3 days / In 7 days at 9:00, or a custom time). The notification opens the item. Reminders live on this device only and never appear in Calendar.
+- **1:1 chats** (text only): start a chat by username; live delivery through Supabase Realtime; unread counts; tappable links.
+- **Share into Snag** from Android's share menu, whether the app is closed or already open.
+
+**Drive**
+- **From Chats:** every image and PDF attached in Saved Messages. Read-only.
+- **My Files:** a private drive. Upload images and PDFs (up to 10 MB), preview, rename, delete, and see "X MB used". Kept completely separate from chats.
+
+**Calendar**
+- Upcoming events grouped by Today, Tomorrow, then dates, with a "Show past events" toggle.
+- Events have a title, date, start time, optional end time, note and reminder (none, at start, 10 min, 1 hour or 1 day before).
+- Reminders are inexact local notifications that survive a reboot. They're rescheduled after login for the next 30 days and cancelled on logout. Tapping one opens the event.
 
 ## Tech stack
 
@@ -44,18 +54,20 @@ If either value is missing, the app shows an "App not configured" screen instead
 Android Share Sheet ──(shared text / URL)──┐
                                             ▼
 FLUTTER APP (Snag)
- ├─ Screens ....... Auth · Messenger · Saved · Detail · Editor · Share · Drive · Profile
+ ├─ Screens ....... Auth · Messenger · Saved · Chats · Detail · Editor · Share · Drive · Calendar · Profile
  ├─ State ......... Riverpod providers
  ├─ Repositories .. the ONLY door to data
- │    ├─ Local .... drift: per-user cache + drafts
+ │    ├─ Local .... drift: per-user cache, drafts, item reminders
  │    └─ Remote ... supabase_flutter
- └─ Services ...... Share intent · Connectivity
+ └─ Services ...... Share intent · Connectivity · Notifications
           │  HTTPS + the signed-in user's JWT (anon key only)
           ▼
 SUPABASE (free plan)
  ├─ Auth ......... email + password; username in profiles
- ├─ Postgres ..... profiles, items, heartbeat          [RLS on every table]
- └─ Storage ...... chat-files (private)                [user-ID folder policy]
+ ├─ Postgres ..... profiles, items, drive_files, events,
+ │                 conversations, members, messages, heartbeat   [RLS on every table]
+ ├─ Storage ...... chat-files, drive (private)                   [user-ID folder policy]
+ └─ Realtime ..... new messages, members only                    [respects RLS]
           ▲
 UptimeRobot ── reads the heartbeat table every 5 minutes (stops the free-plan pause)
 ```
@@ -75,15 +87,20 @@ Screens never touch drift or Supabase directly. Supabase is the source of truth,
 | Postgres `items` | Every saved item: id, type, title, content/URL, tags, created/updated dates, archived, version, owner |
 | Postgres `profiles` | Username per user |
 | Storage `chat-files` (private) | Attachments at `<user_id>/<item_id>/<file_name>`; shown through signed URLs valid for 1 hour |
-| drift on the phone | Cache of the signed-in user's items and unsaved drafts; **wiped on logout** |
+| Postgres `drive_files` + Storage `drive` (private) | Drive "My Files" records and files at `<user_id>/<file_id>/<file_name>` |
+| Postgres `events` | Calendar events |
+| Postgres `conversations`, `conversation_members`, `messages` | 1:1 chats; Realtime publishes new `messages` to members only |
+| drift on the phone | Cache of the signed-in user's items, unsaved drafts and item reminders; **wiped on logout** |
+| Android notification scheduler | Pending event and item reminders; **cancelled on logout** |
 
 ## How one user's data is protected
 
 - **Row Level Security** on every table: a user can only select, insert, update or delete rows where `owner_id = auth.uid()`.
-- **Storage policies** on `chat-files`: the first folder of the path must equal the caller's user id.
+- **Storage policies** on `chat-files` and `drive`: the first folder of the path must equal the caller's user id. A `drive_files` row can't point into another user's folder.
+- **Chats:** only members can read or send messages, and only as themselves. Conversations can only be created through `start_direct_chat`. Members can update nothing on their membership row except their own read marker.
 - The app ships only the anon key, never the service-role key.
-- A deleted item and someone else's item look the same: **"This item no longer exists."**
-- Checked against the live project with no login: `items`, `profiles` and the bucket listing all return `[]`. The Account A vs Account B tests are in plan.md §12.2, with screenshots in `docs/screenshots/`.
+- A deleted item and someone else's item look the same: **"This item no longer exists."** The same applies to events and chats.
+- **Proof:** [`supabase/tests/rls_check.sql`](supabase/tests/rls_check.sql) creates throw-away accounts A, B and C, acts as each through RLS, and rolls everything back. Last run on the live project: B gets 0 of A's items, files, stored objects and events; every write attempt by B is blocked; C can't read, send to or join A and B's chat; anonymous requests get nothing. The REST tests for Account A vs B are in plan.md §12.2, with screenshots in `docs/screenshots/`.
 
 ## Key decisions
 
@@ -97,7 +114,9 @@ Screens never touch drift or Supabase directly. Supabase is the source of truth,
 ## Known issues
 
 - The release APK is signed with the default debug key (fine for sideloading). An update built on another machine may need the old version uninstalled first.
-- Reminders, Calendar and Drive → My Files are not built yet.
+- My Files, Calendar and chats need a connection: they load from Supabase and aren't cached offline the way Saved Messages is.
+- Item reminders are stored on the device where they were set.
+- Android may deliver reminders a few minutes late, because they're scheduled inexactly (no exact-alarm permission).
 
 ## What's next
 
